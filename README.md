@@ -35,7 +35,7 @@ If you check other terminals, please report through [issue](https://github.com/d
 * QTerminal
 * Windows Terminal
 
-"Windows Terminal" will be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
+"Windows Terminal" may be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
 
 ## Usage
 
