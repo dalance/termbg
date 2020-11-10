@@ -39,7 +39,7 @@ If you check other terminals, please report through [issue](https://github.com/d
 
 ```Cargo.toml
 [dependencies]
-termbg = "0.1.0"
+termbg = "0.2.0"
 ```
 
 ## Example
