@@ -11,6 +11,7 @@ The detected color is provided by RGB or theme ( dark or light ).
 * Alacritty
 * GNOME Terminal
 * GNU Screen
+* iTerm2
 * macOS terminal
 * MATE Terminal
 * mintty
