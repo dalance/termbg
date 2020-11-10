@@ -24,8 +24,6 @@ The detected color is provided by RGB or theme ( dark or light ).
 * xterm
 * Win32 console
 
-"Windows Terminal" will be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
-
 If you check other terminals, please report through [issue](https://github.com/dalance/termbg/issues).
 
 ## Unsupported terminals
@@ -34,6 +32,9 @@ If you check other terminals, please report through [issue](https://github.com/d
 * Poderosa
 * PuTTY
 * QTerminal
+* Windows Terminal
+
+"Windows Terminal" will be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
 
 ## Usage
 
