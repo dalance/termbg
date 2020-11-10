@@ -6,16 +6,34 @@ The detected color is provided by RGB or theme ( dark or light ).
 [![Crates.io](https://img.shields.io/crates/v/termbg.svg)](https://crates.io/crates/termbg)
 [![Docs.rs](https://docs.rs/termbg/badge.svg)](https://docs.rs/termbg)
 
-## Verified terminal
+## Verified terminals
 
-* mintty 3.0.6
-* rxvt-unicode 9.21
-* GNOME Terminal 3.28.2
-* xterm patch 295
-* tmux 3.1b
-* screen 4.01.00
+* Alacritty
+* GNOME Terminal
+* GNU Screen
+* macOS terminal
+* MATE Terminal
+* mintty
+* RLogin
+* rxvt-unicode
+* sakura
+* Tera Term
+* Terminator
+* tmux
+* xfce4-terminal
+* xterm
+* Win32 console
+
+"Windows Terminal" will be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
 
 If you check other terminals, please report through [issue](https://github.com/dalance/termbg/issues).
+
+## Unsupported terminals
+
+* LilyTerm
+* Poderosa
+* PuTTY
+* QTerminal
 
 ## Usage
 
@@ -28,20 +46,31 @@ termbg = "0.1.0"
 
 ```rust
 fn main() {
-    println!("Check terminal background color");
-    let rgb = termbg::rgb();
-    let theme = termbg::theme();
+    let timeout = std::time::Duration::from_millis(100);
 
-    if let Some(rgb) = rgb {
-        println!("  Color: R={:x}, G={:x}, B={:x}", rgb.r, rgb.g, rgb.b);
-    } else {
-        println!("  Color: detection failed");
+    println!("Check terminal background color");
+    let term = termbg::terminal();
+    let rgb = termbg::rgb(timeout);
+    let theme = termbg::theme(timeout);
+
+    println!("  Term : {:?}", term);
+
+    match rgb {
+        Ok(rgb) => {
+            println!("  Color: R={:x}, G={:x}, B={:x}", rgb.r, rgb.g, rgb.b);
+        }
+        Err(e) => {
+            println!("  Color: detection failed {:?}", e);
+        }
     }
 
-    if let Some(theme) = theme {
-        println!("  Theme: {:?}", theme);
-    } else {
-        println!("  Theme: detection failed");
+    match theme {
+        Ok(theme) => {
+            println!("  Theme: {:?}", theme);
+        }
+        Err(e) => {
+            println!("  Theme: detection failed {:?}", e);
+        }
     }
 }
 ```
@@ -60,10 +89,8 @@ Check terminal background color
 
 ## Detecting mechanism
 
-If the terminal is rxvt compatible ( `COLORFGBG` environment variable is defined ),
-background color is detected from `COLORFGBG`.
-
-On the other hand, if the terminal is xterm compatible, "Xterm Control Sequences" is used for detection.
+If the terminal is win32 console, WIN32API is used for detection.
+If the terminal is xterm compatible, "Xterm Control Sequences" is used.
 
 The detected RGB is converted to YCbCr.
 If Y > 0.5, the theme is detected as "light", otherwise "dark".

@@ -17,13 +17,16 @@ pre-release-commit-message  = "Prepare to v{{version}}"
 post-release-commit-message = "Start next development iteration v{{version}}"
 tag-message                 = "Bump version to {{version}}"
 tag-prefix                  = ""
-#pre-release-replacements    = [
-#    {file = "README.md", search = "termbg = \"[a-z0-9\\.-]+\"", replace = "termbg = \"{{version}}\""},
-#    {file = "CHANGELOG.md", search = "Unreleased", replace = "v{{version}}"},
-#    {file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}"},
-#    {file = "CHANGELOG.md", search = "Change Log", replace = "Change Log\n\n## [Unreleased](https://github.com/dalance/termbg/compare/v{{version}}...Unreleased) - ReleaseDate"},
-#]
+pre-release-replacements    = [
+    {file = "README.md", search = "termbg = \"[a-z0-9\\.-]+\"", replace = "termbg = \"{{version}}\""},
+    {file = "CHANGELOG.md", search = "Unreleased", replace = "v{{version}}"},
+    {file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}"},
+    {file = "CHANGELOG.md", search = "Change Log", replace = "Change Log\n\n## [Unreleased](https://github.com/dalance/termbg/compare/v{{version}}...Unreleased) - ReleaseDate"},
+]
 
 [dependencies]
-termios           = "0.3"
-timeout-readwrite = "0.3"
+crossterm = "0.18"
+thiserror = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winapi = { version = "0.3", features = ["wincon", "winbase", "processenv", "impl-default"] }

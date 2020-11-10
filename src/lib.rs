@@ -1,15 +1,19 @@
+use crossterm::terminal;
 use std::env;
-use std::io::{self, Read};
-use termios::{tcsetattr, Termios, ECHO, ICANON, TCSANOW};
-use timeout_readwrite::TimeoutReader;
+use std::io::{self, Read, Write};
+use std::time::Duration;
+use thiserror::Error;
+#[cfg(target_os = "windows")]
+use winapi::um::wincon;
 
 /// Terminal
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Terminal {
-    Rxvt,
+    RxvtCompatible,
     Screen,
     Tmux,
-    Xterm,
+    XtermCompatible,
+    Windows,
 }
 
 /// 16bit RGB color
@@ -27,11 +31,32 @@ pub enum Theme {
     Dark,
 }
 
+/// Error
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("terminal error")]
+    Terminal {
+        #[from]
+        source: crossterm::ErrorKind,
+    },
+    #[error("io error")]
+    Io {
+        #[from]
+        source: std::io::Error,
+    },
+    #[error("parse error")]
+    Parse(String),
+    #[error("timeout")]
+    Timeout {
+        #[from]
+        source: std::sync::mpsc::RecvTimeoutError,
+    },
+}
+
 /// get detected termnial
+#[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
-    if env::var("COLORFGBG").is_ok() {
-        Terminal::Rxvt
-    } else if std::env::var("TMUX").is_ok() {
+    if std::env::var("TMUX").is_ok() {
         Terminal::Tmux
     } else {
         let is_screen = if let Ok(term) = std::env::var("TERM") {
@@ -42,39 +67,64 @@ pub fn terminal() -> Terminal {
         if is_screen {
             Terminal::Screen
         } else {
-            Terminal::Xterm
+            Terminal::XtermCompatible
         }
     }
 }
 
+/// get detected termnial
+#[cfg(target_os = "windows")]
+pub fn terminal() -> Terminal {
+    // Windows Terminal is Xterm-compatible
+    // https://github.com/microsoft/terminal/issues/3718
+    if env::var("WT_SESSION").is_ok() {
+        Terminal::XtermCompatible
+    } else {
+        Terminal::Windows
+    }
+}
+
 /// get background color by `RGB`
-pub fn rgb() -> Option<Rgb> {
+#[cfg(not(target_os = "windows"))]
+pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
-    if term == Terminal::Rxvt {
+    if term == Terminal::RxvtCompatible {
         from_rxvt()
     } else {
-        from_xterm(term)
+        from_xterm(term, timeout)
+    }
+}
+
+/// get background color by `RGB`
+#[cfg(target_os = "windows")]
+pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
+    let term = terminal();
+    if term == Terminal::XtermCompatible {
+        from_xterm(term, timeout)
+    } else {
+        from_winapi()
     }
 }
 
 /// get background color by `Theme`
-pub fn theme() -> Option<Theme> {
-    let rgb = rgb()?;
+pub fn theme(timeout: Duration) -> Result<Theme, Error> {
+    let rgb = rgb(timeout)?;
 
     // ITU-R BT.601
     let y = rgb.r as f64 * 0.299 + rgb.g as f64 * 0.587 + rgb.b as f64 * 0.114;
 
     if y > 32768.0 {
-        Some(Theme::Light)
+        Ok(Theme::Light)
     } else {
-        Some(Theme::Dark)
+        Ok(Theme::Dark)
     }
 }
 
-fn from_rxvt() -> Option<Rgb> {
-    let var = env::var("COLORFGBG").ok()?;
+#[cfg(not(target_os = "windows"))]
+fn from_rxvt() -> Result<Rgb, Error> {
+    let var = env::var("COLORFGBG").unwrap();
     let fgbg: Vec<_> = var.split(";").collect();
-    let bg = u8::from_str_radix(fgbg[1], 10).ok()?;
+    let bg = u8::from_str_radix(fgbg[1], 10).map_err(|_| Error::Parse(String::from(var)))?;
 
     // rxvt default color table
     let (r, g, b) = match bg {
@@ -113,68 +163,155 @@ fn from_rxvt() -> Option<Rgb> {
         _ => (0, 0, 0),
     };
 
-    Some(Rgb {
+    Ok(Rgb {
         r: r * 256,
         g: g * 256,
         b: b * 256,
     })
 }
 
-fn from_xterm(term: Terminal) -> Option<Rgb> {
+fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     // Query by XTerm control sequence
-    if term == Terminal::Tmux {
-        eprint!("\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\\x03");
+    let query = if term == Terminal::Tmux {
+        "\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\\x03"
     } else if term == Terminal::Screen {
-        eprint!("\x1bP\x1b]11;?\x07\x1b\\\x03");
+        "\x1bP\x1b]11;?\x07\x1b\\\x03"
     } else {
-        eprint!("\x1b]11;?\x1b\\");
-    }
+        "\x1b]11;?\x1b\\"
+    };
 
-    // Get query result
-    let stdin = 0;
-    let termios = Termios::from_fd(stdin).ok()?;
-    let mut new_termios = termios.clone();
-    new_termios.c_lflag &= !(ICANON | ECHO);
-    tcsetattr(stdin, TCSANOW, &mut new_termios).ok()?;
-    let reader = TimeoutReader::new(io::stdin(), std::time::Duration::from_millis(100));
+    let mut stderr = io::stderr();
+    terminal::enable_raw_mode()?;
+    write!(stderr, "{}", query)?;
+    stderr.flush()?;
 
-    let mut buffer = [0; 25];
-    let mut reader = reader.take(25);
-    reader.read(&mut buffer).ok()?;
-    tcsetattr(stdin, TCSANOW, &termios).ok()?;
+    let mut stdin = io::stdin();
 
-    let mut start = None;
-    let mut end = None;
-    for (i, c) in buffer.iter().enumerate() {
-        if *c == b':' {
-            start = Some(i + 1);
-        } else if *c == 0x1b && start.is_some() {
-            end = Some(i);
-        } else if *c == 0x7 && start.is_some() {
-            end = Some(i);
+    let (tx, rx) = std::sync::mpsc::channel();
+
+    std::thread::spawn(move || {
+        let mut buffer = Vec::new();
+        let mut buf = [0; 1];
+        let mut start = false;
+        loop {
+            stdin.read(&mut buf).unwrap();
+            // response terminated by ESC(0x1b) or BELL(0x7)
+            if start && (buf[0] == 0x1b || buf[0] == 0x7) {
+                break;
+            }
+            if start {
+                buffer.push(buf[0]);
+            }
+            if buf[0] == b':' {
+                start = true;
+            }
         }
-    }
+        tx.send(buffer).unwrap();
+    });
 
-    if let Some(start) = start {
-        if let Some(end) = end {
-            let s = String::from_utf8_lossy(&buffer[start..end]);
-            let rgb: Vec<_> = s.split("/").collect();
+    let buffer = rx.recv_timeout(timeout);
 
-            let r = decode_x11_color(rgb[0])?;
-            let g = decode_x11_color(rgb[1])?;
-            let b = decode_x11_color(rgb[2])?;
-            Some(Rgb { r, g, b })
-        } else {
-            None
-        }
-    } else {
-        None
-    }
+    terminal::disable_raw_mode()?;
+
+    // Should return by error after disable_raw_mode
+    let buffer = buffer?;
+
+    let s = String::from_utf8_lossy(&buffer);
+    let (r, g, b) = decode_x11_color(&*s)?;
+    Ok(Rgb { r, g, b })
 }
 
-fn decode_x11_color(s: &str) -> Option<u16> {
-    let len = s.len() as u32;
-    let mut ret = u16::from_str_radix(s, 16).ok()?;
-    ret *= 2u16.pow(4 - len);
-    Some(ret)
+fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
+    fn decode_hex(s: &str) -> Result<u16, Error> {
+        let len = s.len() as u32;
+        let mut ret = u16::from_str_radix(s, 16).map_err(|_| Error::Parse(String::from(s)))?;
+        ret = ret << ((4 - len) * 4);
+        Ok(ret)
+    }
+
+    let rgb: Vec<_> = s.split("/").collect();
+
+    let r = rgb
+        .get(0)
+        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
+    let g = rgb
+        .get(1)
+        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
+    let b = rgb
+        .get(2)
+        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
+    let r = decode_hex(r)?;
+    let g = decode_hex(g)?;
+    let b = decode_hex(b)?;
+
+    Ok((r, g, b))
+}
+
+#[cfg(target_os = "windows")]
+fn from_winapi() -> Result<Rgb, Error> {
+    let info = unsafe {
+        let handle = winapi::um::processenv::GetStdHandle(winapi::um::winbase::STD_OUTPUT_HANDLE);
+        let mut info: wincon::CONSOLE_SCREEN_BUFFER_INFO = Default::default();
+        wincon::GetConsoleScreenBufferInfo(handle, &mut info);
+        info
+    };
+
+    let r = (wincon::BACKGROUND_RED & info.wAttributes) != 0;
+    let g = (wincon::BACKGROUND_GREEN & info.wAttributes) != 0;
+    let b = (wincon::BACKGROUND_BLUE & info.wAttributes) != 0;
+    let i = (wincon::BACKGROUND_INTENSITY & info.wAttributes) != 0;
+
+    let r: u8 = r as u8;
+    let g: u8 = g as u8;
+    let b: u8 = b as u8;
+    let i: u8 = i as u8;
+
+    let (r, g, b) = match (r, g, b, i) {
+        (0, 0, 0, 0) => (0, 0, 0),
+        (1, 0, 0, 0) => (128, 0, 0),
+        (0, 1, 0, 0) => (0, 128, 0),
+        (1, 1, 0, 0) => (128, 128, 0),
+        (0, 0, 1, 0) => (0, 0, 128),
+        (1, 0, 1, 0) => (128, 0, 128),
+        (0, 1, 1, 0) => (0, 128, 128),
+        (1, 1, 1, 0) => (192, 192, 192),
+        (0, 0, 0, 1) => (128, 128, 128),
+        (1, 0, 0, 1) => (255, 0, 0),
+        (0, 1, 0, 1) => (0, 255, 0),
+        (1, 1, 0, 1) => (255, 255, 0),
+        (0, 0, 1, 1) => (0, 0, 255),
+        (1, 0, 1, 1) => (255, 0, 255),
+        (0, 1, 1, 1) => (0, 255, 255),
+        (1, 1, 1, 1) => (255, 255, 255),
+        _ => unreachable!(),
+    };
+
+    Ok(Rgb {
+        r: r * 256,
+        g: g * 256,
+        b: b * 256,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_x11_color() {
+        let s = "0000/0000/0000";
+        assert_eq!((0, 0, 0), decode_x11_color(s).unwrap());
+
+        let s = "1111/2222/3333";
+        assert_eq!((0x1111, 0x2222, 0x3333), decode_x11_color(s).unwrap());
+
+        let s = "111/222/333";
+        assert_eq!((0x1110, 0x2220, 0x3330), decode_x11_color(s).unwrap());
+
+        let s = "11/22/33";
+        assert_eq!((0x1100, 0x2200, 0x3300), decode_x11_color(s).unwrap());
+
+        let s = "1/2/3";
+        assert_eq!((0x1000, 0x2000, 0x3000), decode_x11_color(s).unwrap());
+    }
 }
