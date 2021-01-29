@@ -8,19 +8,20 @@ The detected color is provided by RGB or theme ( dark or light ).
 
 ## Verified terminals
 
-* Alacritty
+* [Alacritty](https://github.com/alacritty/alacritty)
 * GNOME Terminal
 * GNU Screen
-* iTerm2
+* [iTerm2](https://iterm2.com)
 * macOS terminal
 * MATE Terminal
-* mintty
-* RLogin
+* [mintty](https://mintty.github.io)
+* [RLogin](http://nanno.dip.jp/softlib/man/rlogin/)
 * rxvt-unicode
 * sakura
-* Tera Term
-* Terminator
-* tmux
+* [PuTTY PRIVATE PATCHES](https://ice.hotmint.com/putty/)
+* [Tera Term](https://ttssh2.osdn.jp)
+* [Terminator](https://terminator-gtk3.readthedocs.io/en/latest/)
+* [tmux](https://github.com/tmux/tmux)
 * xfce4-terminal
 * xterm
 * Win32 console
@@ -29,11 +30,11 @@ If you check other terminals, please report through [issue](https://github.com/d
 
 ## Unsupported terminals
 
-* LilyTerm
-* Poderosa
-* PuTTY
-* QTerminal
-* Windows Terminal
+* [LilyTerm](https://github.com/Tetralet/LilyTerm)
+* [Poderosa](https://ja.poderosa-terminal.com)
+* [PuTTY](https://www.putty.org)
+* [QTerminal](https://github.com/lxqt/qterminal)
+* [Windows Terminal](https://github.com/microsoft/terminal)
 
 "Windows Terminal" may be supported in a future release: https://github.com/microsoft/terminal/issues/3718.
 
