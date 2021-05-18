@@ -34,6 +34,7 @@ If you check other terminals, please report through [issue](https://github.com/d
 * [Poderosa](https://ja.poderosa-terminal.com)
 * [PuTTY](https://www.putty.org)
 * [QTerminal](https://github.com/lxqt/qterminal)
+* [Visual Studio Code](https://code.visualstudio.com)
 * [Windows Terminal](https://github.com/microsoft/terminal)
 
 "Windows Terminal" may be supported in a future release: https://github.com/microsoft/terminal/issues/3718.

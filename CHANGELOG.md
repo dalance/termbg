@@ -2,6 +2,8 @@
 
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.2...Unreleased) - ReleaseDate
 
+* [Fixed] Hung at VSCode
+
 ## [v0.2.2](https://github.com/dalance/termbg/compare/v0.2.1...v0.2.2) - 2021-05-18
 
 ## [v0.2.1](https://github.com/dalance/termbg/compare/v0.2.0...v0.2.1) - 2021-05-18

@@ -14,6 +14,7 @@ pub enum Terminal {
     Tmux,
     XtermCompatible,
     Windows,
+    VSCode,
 }
 
 /// 16bit RGB color
@@ -51,11 +52,19 @@ pub enum Error {
         #[from]
         source: std::sync::mpsc::RecvTimeoutError,
     },
+    #[error("unsupported")]
+    Unsupported,
 }
 
 /// get detected termnial
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
+    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+        if term_program == "vscode" {
+            return Terminal::VSCode;
+        }
+    }
+
     if std::env::var("TMUX").is_ok() {
         Terminal::Tmux
     } else {
@@ -75,6 +84,12 @@ pub fn terminal() -> Terminal {
 /// get detected termnial
 #[cfg(target_os = "windows")]
 pub fn terminal() -> Terminal {
+    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+        if term_program == "vscode" {
+            return Terminal::VSCode;
+        }
+    }
+
     // Windows Terminal is Xterm-compatible
     // https://github.com/microsoft/terminal/issues/3718
     if env::var("WT_SESSION").is_ok() {
@@ -88,10 +103,10 @@ pub fn terminal() -> Terminal {
 #[cfg(not(target_os = "windows"))]
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
-    if term == Terminal::RxvtCompatible {
-        from_rxvt()
-    } else {
-        from_xterm(term, timeout)
+    match term {
+        Terminal::VSCode => Err(Error::Unsupported),
+        Terminal::RxvtCompatible => from_rxvt(),
+        _ => from_xterm(term, timeout),
     }
 }
 
@@ -99,10 +114,10 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 #[cfg(target_os = "windows")]
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
-    if term == Terminal::XtermCompatible {
-        from_xterm(term, timeout)
-    } else {
-        from_winapi()
+    match term {
+        Terminal::VSCode => Err(Error::Unsupported),
+        Terminal::XtermCompatible => from_xterm(term, timeout),
+        _ => from_winapi(),
     }
 }
 
