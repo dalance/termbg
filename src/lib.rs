@@ -195,8 +195,13 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         let mut start = false;
         loop {
             stdin.read(&mut buf).unwrap();
-            // response terminated by ESC(0x1b) or BELL(0x7)
-            if start && (buf[0] == 0x1b || buf[0] == 0x7) {
+            // response terminated by BEL(0x7)
+            if start && (buf[0] == 0x7) {
+                break;
+            }
+            // response terminated by ST(0x1b 0x5c)
+            if start && (buf[0] == 0x1b) {
+                stdin.read(&mut buf).unwrap();
                 break;
             }
             if start {
