@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.0...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.1...Unreleased) - ReleaseDate
+
+## [v0.2.1](https://github.com/dalance/termbg/compare/v0.2.0...v0.2.1) - 2021-05-18
 
 * [Fixed] Bytes leak [#4](https://github.com/dalance/termbg/issues/4)
 
