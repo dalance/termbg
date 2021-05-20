@@ -209,14 +209,16 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         let mut buf = [0; 1];
         let mut start = false;
         loop {
-            stdin.read(&mut buf).unwrap();
+            let _ = stdin.read_exact(&mut buf);
             // response terminated by BEL(0x7)
             if start && (buf[0] == 0x7) {
                 break;
             }
             // response terminated by ST(0x1b 0x5c)
             if start && (buf[0] == 0x1b) {
-                stdin.read(&mut buf).unwrap();
+                // consume last 0x5c
+                let _ = stdin.read_exact(&mut buf);
+                debug_assert_eq!(buf[0], 0x5c);
                 break;
             }
             if start {
@@ -226,7 +228,8 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
                 start = true;
             }
         }
-        tx.send(buffer).unwrap();
+        // Ignore send error because timeout may be occured
+        let _ = tx.send(buffer);
     });
 
     let buffer = rx.recv_timeout(timeout);

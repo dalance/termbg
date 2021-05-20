@@ -2,6 +2,8 @@
 
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.3...Unreleased) - ReleaseDate
 
+* [Fixed] Panic at response check thread
+
 ## [v0.2.3](https://github.com/dalance/termbg/compare/v0.2.2...v0.2.3) - 2021-05-19
 
 * [Fixed] Hung at VSCode
