@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.3...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.4...Unreleased) - ReleaseDate
+
+## [v0.2.4](https://github.com/dalance/termbg/compare/v0.2.3...v0.2.4) - 2021-05-20
 
 * [Fixed] Panic at response check thread
 
