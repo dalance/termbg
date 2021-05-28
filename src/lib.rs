@@ -1,6 +1,6 @@
 use crossterm::terminal;
 use std::env;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::time::Duration;
 use thiserror::Error;
 #[cfg(target_os = "windows")]
@@ -47,11 +47,6 @@ pub enum Error {
     },
     #[error("parse error")]
     Parse(String),
-    #[error("timeout")]
-    Timeout {
-        #[from]
-        source: std::sync::mpsc::RecvTimeoutError,
-    },
     #[error("unsupported")]
     Unsupported,
 }
@@ -200,16 +195,14 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     write!(stderr, "{}", query)?;
     stderr.flush()?;
 
-    let mut stdin = io::stdin();
-
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    std::thread::spawn(move || {
+    let buffer = async_std::task::block_on(async_std::io::timeout(timeout, async {
+        use async_std::io::ReadExt;
         let mut buffer = Vec::new();
+        let mut stdin = async_std::io::stdin();
         let mut buf = [0; 1];
         let mut start = false;
         loop {
-            let _ = stdin.read_exact(&mut buf);
+            let _ = stdin.read_exact(&mut buf).await?;
             // response terminated by BEL(0x7)
             if start && (buf[0] == 0x7) {
                 break;
@@ -217,7 +210,7 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
             // response terminated by ST(0x1b 0x5c)
             if start && (buf[0] == 0x1b) {
                 // consume last 0x5c
-                let _ = stdin.read_exact(&mut buf);
+                let _ = stdin.read_exact(&mut buf).await?;
                 debug_assert_eq!(buf[0], 0x5c);
                 break;
             }
@@ -228,11 +221,8 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
                 start = true;
             }
         }
-        // Ignore send error because timeout may be occured
-        let _ = tx.send(buffer);
-    });
-
-    let buffer = rx.recv_timeout(timeout);
+        Ok(buffer)
+    }));
 
     terminal::disable_raw_mode()?;
 

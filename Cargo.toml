@@ -25,6 +25,7 @@ pre-release-replacements    = [
 ]
 
 [dependencies]
+async-std = "1.9.0"
 crossterm = "0.19"
 thiserror = "1"
 
