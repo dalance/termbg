@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.4...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.3.0...Unreleased) - ReleaseDate
+
+## [v0.3.0](https://github.com/dalance/termbg/compare/v0.2.4...v0.3.0) - 2021-05-28
 
 * [Fixed] unexpected stdin lock [#5](https://github.com/dalance/termbg/issues/5)
 
