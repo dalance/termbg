@@ -2,6 +2,8 @@
 
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.2.4...Unreleased) - ReleaseDate
 
+* [Fixed] unexpected stdin lock [#5](https://github.com/dalance/termbg/issues/5)
+
 ## [v0.2.4](https://github.com/dalance/termbg/compare/v0.2.3...v0.2.4) - 2021-05-20
 
 * [Fixed] Panic at response check thread
