@@ -9,7 +9,6 @@ use winapi::um::wincon;
 /// Terminal
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum Terminal {
-    RxvtCompatible,
     Screen,
     Tmux,
     XtermCompatible,
@@ -100,7 +99,6 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     match term {
         Terminal::VSCode => Err(Error::Unsupported),
-        Terminal::RxvtCompatible => from_rxvt(),
         _ => from_xterm(term, timeout),
     }
 }
@@ -128,56 +126,6 @@ pub fn theme(timeout: Duration) -> Result<Theme, Error> {
     } else {
         Ok(Theme::Dark)
     }
-}
-
-#[cfg(not(target_os = "windows"))]
-fn from_rxvt() -> Result<Rgb, Error> {
-    let var = env::var("COLORFGBG").unwrap();
-    let fgbg: Vec<_> = var.split(";").collect();
-    let bg = u8::from_str_radix(fgbg[1], 10).map_err(|_| Error::Parse(String::from(var)))?;
-
-    // rxvt default color table
-    let (r, g, b) = match bg {
-        // black
-        0 => (0, 0, 0),
-        // red
-        1 => (205, 0, 0),
-        // green
-        2 => (0, 205, 0),
-        // yellow
-        3 => (205, 205, 0),
-        // blue
-        4 => (0, 0, 238),
-        // magenta
-        5 => (205, 0, 205),
-        // cyan
-        6 => (0, 205, 205),
-        // white
-        7 => (229, 229, 229),
-        // bright black
-        8 => (127, 127, 127),
-        // bright red
-        9 => (255, 0, 0),
-        // bright green
-        10 => (0, 255, 0),
-        // bright yellow
-        11 => (255, 255, 0),
-        // bright blue
-        12 => (92, 92, 255),
-        // bright magenta
-        13 => (255, 0, 255),
-        // bright cyan
-        14 => (0, 255, 255),
-        // bright white
-        15 => (255, 255, 255),
-        _ => (0, 0, 0),
-    };
-
-    Ok(Rgb {
-        r: r * 256,
-        g: g * 256,
-        b: b * 256,
-    })
 }
 
 fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
