@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.3.0...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.0...Unreleased) - ReleaseDate
+
+## [v0.4.0](https://github.com/dalance/termbg/compare/v0.3.0...v0.4.0) - 2022-01-25
 
 * [Breaking Changed] drop Terminal::RxvtCompatible
 * [Added] latency measurement function

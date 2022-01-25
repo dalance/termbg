@@ -44,7 +44,7 @@ If you check other terminals, please report through [issue](https://github.com/d
 
 ```Cargo.toml
 [dependencies]
-termbg = "0.3.0"
+termbg = "0.4.0"
 ```
 
 ## Example
