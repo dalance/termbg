@@ -3,10 +3,20 @@ fn main() {
 
     println!("Check terminal background color");
     let term = termbg::terminal();
+    let latency = termbg::latency(std::time::Duration::from_millis(1000));
     let rgb = termbg::rgb(timeout);
     let theme = termbg::theme(timeout);
 
     println!("  Term : {:?}", term);
+
+    match latency {
+        Ok(latency) => {
+            println!("  Latency: {:?}", latency);
+        }
+        Err(e) => {
+            println!("  Color: detection failed {:?}", e);
+        }
+    }
 
     match rgb {
         Ok(rgb) => {

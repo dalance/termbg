@@ -3,6 +3,7 @@
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.3.0...Unreleased) - ReleaseDate
 
 * [Breaking Changed] drop Terminal::RxvtCompatible
+* [Added] latency measurement function
 
 ## [v0.3.0](https://github.com/dalance/termbg/compare/v0.2.4...v0.3.0) - 2021-05-28
 

@@ -1,7 +1,7 @@
 use crossterm::terminal;
 use std::env;
 use std::io::{self, Write};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use thiserror::Error;
 #[cfg(target_os = "windows")]
 use winapi::um::wincon;
@@ -53,16 +53,16 @@ pub enum Error {
 /// get detected termnial
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
-    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+    if let Ok(term_program) = env::var("TERM_PROGRAM") {
         if term_program == "vscode" {
             return Terminal::VSCode;
         }
     }
 
-    if std::env::var("TMUX").is_ok() {
+    if env::var("TMUX").is_ok() {
         Terminal::Tmux
     } else {
-        let is_screen = if let Ok(term) = std::env::var("TERM") {
+        let is_screen = if let Ok(term) = env::var("TERM") {
             term.starts_with("screen")
         } else {
             false
@@ -78,7 +78,7 @@ pub fn terminal() -> Terminal {
 /// get detected termnial
 #[cfg(target_os = "windows")]
 pub fn terminal() -> Terminal {
-    if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+    if let Ok(term_program) = env::var("TERM_PROGRAM") {
         if term_program == "vscode" {
             return Terminal::VSCode;
         }
@@ -111,6 +111,27 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
         Terminal::VSCode => Err(Error::Unsupported),
         Terminal::XtermCompatible => from_xterm(term, timeout),
         _ => from_winapi(),
+    }
+}
+
+/// get background color by `RGB`
+#[cfg(not(target_os = "windows"))]
+pub fn latency(timeout: Duration) -> Result<Duration, Error> {
+    let term = terminal();
+    match term {
+        Terminal::VSCode => Ok(Duration::from_millis(0)),
+        _ => xterm_latency(timeout),
+    }
+}
+
+/// get background color by `RGB`
+#[cfg(target_os = "windows")]
+pub fn latency(timeout: Duration) -> Result<Duration, Error> {
+    let term = terminal();
+    match term {
+        Terminal::VSCode => Ok(Duration::from_millis(0)),
+        Terminal::XtermCompatible => xterm_latency(timeout),
+        _ => Ok(Duration::from_millis(0)),
     }
 }
 
@@ -180,6 +201,38 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     let s = String::from_utf8_lossy(&buffer);
     let (r, g, b) = decode_x11_color(&*s)?;
     Ok(Rgb { r, g, b })
+}
+
+fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
+    // Query by XTerm control sequence
+    let query = "\x1b[5n";
+
+    let mut stderr = io::stderr();
+    terminal::enable_raw_mode()?;
+    write!(stderr, "{}", query)?;
+    stderr.flush()?;
+
+    let start = Instant::now();
+
+    let _ = async_std::task::block_on(async_std::io::timeout(timeout, async {
+        use async_std::io::ReadExt;
+        let mut stdin = async_std::io::stdin();
+        let mut buf = [0; 1];
+        loop {
+            let _ = stdin.read_exact(&mut buf).await?;
+            // response terminated by 'n'
+            if buf[0] == b'n' {
+                break;
+            }
+        }
+        Ok(())
+    }));
+
+    let end = start.elapsed();
+
+    terminal::disable_raw_mode()?;
+
+    Ok(end)
 }
 
 fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
