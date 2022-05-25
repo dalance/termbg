@@ -14,6 +14,7 @@ pub enum Terminal {
     XtermCompatible,
     Windows,
     VSCode,
+    Emacs,
 }
 
 /// 16bit RGB color
@@ -59,6 +60,10 @@ pub fn terminal() -> Terminal {
         }
     }
 
+    if env::var("INSIDE_EMACS").is_ok() {
+        return Terminal::Emacs;
+    }
+
     if env::var("TMUX").is_ok() {
         Terminal::Tmux
     } else {
@@ -84,6 +89,10 @@ pub fn terminal() -> Terminal {
         }
     }
 
+    if env::var("INSIDE_EMACS").is_ok() {
+        return Terminal::Emacs;
+    }
+
     // Windows Terminal is Xterm-compatible
     // https://github.com/microsoft/terminal/issues/3718
     if env::var("WT_SESSION").is_ok() {
@@ -99,6 +108,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     match term {
         Terminal::VSCode => Err(Error::Unsupported),
+        Terminal::Emacs => Err(Error::Unsupported),
         _ => from_xterm(term, timeout),
     }
 }
@@ -109,6 +119,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     match term {
         Terminal::VSCode => Err(Error::Unsupported),
+        Terminal::Emacs => Err(Error::Unsupported),
         Terminal::XtermCompatible => from_xterm(term, timeout),
         _ => from_winapi(),
     }
@@ -120,6 +131,7 @@ pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
         Terminal::VSCode => Ok(Duration::from_millis(0)),
+        Terminal::Emacs => Ok(Duration::from_millis(0)),
         _ => xterm_latency(timeout),
     }
 }
@@ -130,6 +142,7 @@ pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
         Terminal::VSCode => Ok(Duration::from_millis(0)),
+        Terminal::Emacs => Ok(Duration::from_millis(0)),
         Terminal::XtermCompatible => xterm_latency(timeout),
         _ => Ok(Duration::from_millis(0)),
     }
