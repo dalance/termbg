@@ -26,7 +26,7 @@ pre-release-replacements    = [
 
 [dependencies]
 async-std = "1.9.0"
-crossterm = "0.19"
+crossterm = "0.24"
 thiserror = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
