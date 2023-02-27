@@ -31,6 +31,8 @@ If you check other terminals, please report through [issue](https://github.com/d
 
 ## Unsupported terminals
 
+* [Cmder](https://cmder.app)
+* [ConEmu](https://conemu.github.io)
 * [LilyTerm](https://github.com/Tetralet/LilyTerm)
 * [Poderosa](https://ja.poderosa-terminal.com)
 * [PuTTY](https://www.putty.org)
