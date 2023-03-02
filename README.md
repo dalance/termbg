@@ -98,6 +98,7 @@ Check terminal background color
 
 If the terminal is win32 console, WIN32API is used for detection.
 If the terminal is xterm compatible, "Xterm Control Sequences" is used.
+When these method was failed, `COLORFGBG` environment variable is used.
 
 The detected RGB is converted to YCbCr.
 If Y > 0.5, the theme is detected as "light", otherwise "dark".
