@@ -14,7 +14,7 @@ fn main() {
             println!("  Latency: {:?}", latency);
         }
         Err(e) => {
-            println!("  Color: detection failed {:?}", e);
+            println!("  Latency: detection failed {:?}", e);
         }
     }
 

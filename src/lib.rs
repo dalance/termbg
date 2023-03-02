@@ -295,7 +295,7 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
 
     let start = Instant::now();
 
-    let _ = async_std::task::block_on(async_std::io::timeout(timeout, async {
+    let ret = async_std::task::block_on(async_std::io::timeout(timeout, async {
         use async_std::io::ReadExt;
         let mut stdin = async_std::io::stdin();
         let mut buf = [0; 1];
@@ -312,6 +312,8 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
     let end = start.elapsed();
 
     terminal::disable_raw_mode()?;
+
+    let _ = ret?;
 
     Ok(end)
 }
