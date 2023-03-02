@@ -106,10 +106,18 @@ pub fn terminal() -> Terminal {
 #[cfg(not(target_os = "windows"))]
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
-    match term {
+    let rgb = match term {
         Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
         _ => from_xterm(term, timeout),
+    };
+    let fallback = from_env_colorfgbg();
+    if rgb.is_ok() {
+        rgb
+    } else if fallback.is_ok() {
+        fallback
+    } else {
+        rgb
     }
 }
 
@@ -117,11 +125,19 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 #[cfg(target_os = "windows")]
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
-    match term {
+    let rgb = match term {
         Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
         Terminal::XtermCompatible => from_xterm(term, timeout),
         _ => from_winapi(),
+    };
+    let fallback = from_env_colorfgbg();
+    if rgb.is_ok() {
+        rgb
+    } else if fallback.is_ok() {
+        fallback
+    } else {
+        rgb
     }
 }
 
@@ -214,6 +230,58 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     let s = String::from_utf8_lossy(&buffer);
     let (r, g, b) = decode_x11_color(&*s)?;
     Ok(Rgb { r, g, b })
+}
+
+fn from_env_colorfgbg() -> Result<Rgb, Error> {
+    let var = env::var("COLORFGBG").map_err(|_| Error::Unsupported)?;
+    let fgbg: Vec<_> = var.split(";").collect();
+    let bg = fgbg.get(1).ok_or(Error::Unsupported)?;
+    let bg = u8::from_str_radix(bg, 10).map_err(|_| Error::Parse(String::from(var)))?;
+
+    // rxvt default color table
+    let (r, g, b) = match bg {
+        // black
+        0 => (0, 0, 0),
+        // red
+        1 => (205, 0, 0),
+        // green
+        2 => (0, 205, 0),
+        // yellow
+        3 => (205, 205, 0),
+        // blue
+        4 => (0, 0, 238),
+        // magenta
+        5 => (205, 0, 205),
+
+        // cyan
+        6 => (0, 205, 205),
+        // white
+        7 => (229, 229, 229),
+        // bright black
+        8 => (127, 127, 127),
+        // bright red
+        9 => (255, 0, 0),
+        // bright green
+        10 => (0, 255, 0),
+        // bright yellow
+        11 => (255, 255, 0),
+        // bright blue
+        12 => (92, 92, 255),
+        // bright magenta
+        13 => (255, 0, 255),
+        // bright cyan
+        14 => (0, 255, 255),
+
+        // bright white
+        15 => (255, 255, 255),
+        _ => (0, 0, 0),
+    };
+
+    Ok(Rgb {
+        r: r * 256,
+        g: g * 256,
+        b: b * 256,
+    })
 }
 
 fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
