@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.2...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.3...Unreleased) - ReleaseDate
+
+## [v0.4.3](https://github.com/dalance/termbg/compare/v0.4.2...v0.4.3) - 2023-03-02
 
 ## [v0.4.2](https://github.com/dalance/termbg/compare/v0.4.1...v0.4.2) - 2023-03-02
 
