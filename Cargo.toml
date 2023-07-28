@@ -27,6 +27,7 @@ pre-release-replacements    = [
 async-std = "1.9.0"
 crossterm = "0.19"
 thiserror = "1"
+is-terminal = "0.4.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = ["wincon", "winbase", "processenv", "impl-default"] }
