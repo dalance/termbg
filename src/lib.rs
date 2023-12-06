@@ -1,4 +1,5 @@
 use crossterm::terminal;
+use is_terminal::IsTerminal;
 use std::env;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
@@ -179,6 +180,14 @@ pub fn theme(timeout: Duration) -> Result<Theme, Error> {
 }
 
 fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
+    if !std::io::stdin().is_terminal()
+        || !std::io::stdout().is_terminal()
+        || !std::io::stderr().is_terminal()
+    {
+        // Not a terminal, so don't try to read the current background color.
+        return Err(Error::Unsupported);
+    }
+
     // Query by XTerm control sequence
     let query = if term == Terminal::Tmux {
         "\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\\x03"
