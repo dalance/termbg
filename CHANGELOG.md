@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.3...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.4...Unreleased) - ReleaseDate
+
+## [v0.4.4](https://github.com/dalance/termbg/compare/v0.4.3...v0.4.4) - 2023-12-06
 
 * [Fixed] Do not set the terminal to raw mode if it isn't actually a terminal [#19](https://github.com/dalance/termbg/pull/19)
 
