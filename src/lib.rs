@@ -337,15 +337,9 @@ fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
 
     let rgb: Vec<_> = s.split("/").collect();
 
-    let r = rgb
-        .get(0)
-        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
-    let g = rgb
-        .get(1)
-        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
-    let b = rgb
-        .get(2)
-        .ok_or_else(|| Error::Parse(String::from(s.clone())))?;
+    let r = rgb.get(0).ok_or_else(|| Error::Parse(String::from(s)))?;
+    let g = rgb.get(1).ok_or_else(|| Error::Parse(String::from(s)))?;
+    let b = rgb.get(2).ok_or_else(|| Error::Parse(String::from(s)))?;
     let r = decode_hex(r)?;
     let g = decode_hex(g)?;
     let b = decode_hex(b)?;
