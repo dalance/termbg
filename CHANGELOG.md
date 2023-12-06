@@ -2,6 +2,8 @@
 
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.3...Unreleased) - ReleaseDate
 
+* [Fixed] Do not set the terminal to raw mode if it isn't actually a terminal [#19](https://github.com/dalance/termbg/pull/19)
+
 ## [v0.4.3](https://github.com/dalance/termbg/compare/v0.4.2...v0.4.3) - 2023-03-02
 
 ## [v0.4.2](https://github.com/dalance/termbg/compare/v0.4.1...v0.4.2) - 2023-03-02
