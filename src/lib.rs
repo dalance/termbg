@@ -14,7 +14,6 @@ pub enum Terminal {
     Tmux,
     XtermCompatible,
     Windows,
-    VSCode,
     Emacs,
 }
 
@@ -55,12 +54,6 @@ pub enum Error {
 /// get detected termnial
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
-    if let Ok(term_program) = env::var("TERM_PROGRAM") {
-        if term_program == "vscode" {
-            return Terminal::VSCode;
-        }
-    }
-
     if env::var("INSIDE_EMACS").is_ok() {
         return Terminal::Emacs;
     }
@@ -86,7 +79,7 @@ pub fn terminal() -> Terminal {
 pub fn terminal() -> Terminal {
     if let Ok(term_program) = env::var("TERM_PROGRAM") {
         if term_program == "vscode" {
-            return Terminal::VSCode;
+            return Terminal::XtermCompatible;
         }
     }
 
@@ -127,7 +120,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     let rgb = match term {
         Terminal::Emacs => Err(Error::Unsupported),
-        Terminal::XtermCompatible | Terminal::VSCode => from_xterm(term, timeout),
+        Terminal::XtermCompatible => from_xterm(term, timeout),
         _ => from_winapi(),
     };
     let fallback = from_env_colorfgbg();
