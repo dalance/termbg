@@ -108,7 +108,6 @@ pub fn terminal() -> Terminal {
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     let rgb = match term {
-        Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
         _ => from_xterm(term, timeout),
     };
@@ -127,9 +126,8 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     let rgb = match term {
-        Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
-        Terminal::XtermCompatible => from_xterm(term, timeout),
+        Terminal::XtermCompatible | Terminal::VSCode => from_xterm(term, timeout),
         _ => from_winapi(),
     };
     let fallback = from_env_colorfgbg();
@@ -147,7 +145,6 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
-        Terminal::VSCode => Ok(Duration::from_millis(0)),
         Terminal::Emacs => Ok(Duration::from_millis(0)),
         _ => xterm_latency(timeout),
     }
@@ -158,7 +155,6 @@ pub fn latency(timeout: Duration) -> Result<Duration, Error> {
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
-        Terminal::VSCode => Ok(Duration::from_millis(0)),
         Terminal::Emacs => Ok(Duration::from_millis(0)),
         Terminal::XtermCompatible => xterm_latency(timeout),
         _ => Ok(Duration::from_millis(0)),
