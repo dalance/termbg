@@ -36,15 +36,10 @@ pub enum Theme {
 /// Error
 #[derive(Error, Debug)]
 pub enum Error {
-    #[error("terminal error")]
-    Terminal {
-        #[from]
-        source: crossterm::ErrorKind,
-    },
     #[error("io error")]
     Io {
         #[from]
-        source: std::io::Error,
+        source: io::Error,
     },
     #[error("parse error")]
     Parse(String),
