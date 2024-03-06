@@ -2,6 +2,9 @@
 
 ## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.4...Unreleased) - ReleaseDate
 
+* [Breaking Changed] feat: upgrade crossterm to 0.27.0 [#22](https://github.com/dalance/termbg/pull/22)
+* [Changed] Remove special case for VSCode [#21](https://github.com/dalance/termbg/pull/21)
+
 ## [v0.4.4](https://github.com/dalance/termbg/compare/v0.4.3...v0.4.4) - 2023-12-06
 
 * [Fixed] Do not set the terminal to raw mode if it isn't actually a terminal [#19](https://github.com/dalance/termbg/pull/19)
