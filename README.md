@@ -23,6 +23,7 @@ The detected color is provided by RGB or theme ( dark or light ).
 * [Tera Term](https://ttssh2.osdn.jp)
 * [Terminator](https://terminator-gtk3.readthedocs.io/en/latest/)
 * [tmux](https://github.com/tmux/tmux)
+* [Visual Studio Code](https://code.visualstudio.com)
 * xfce4-terminal
 * xterm
 * Win32 console
@@ -37,7 +38,6 @@ If you check other terminals, please report through [issue](https://github.com/d
 * [Poderosa](https://ja.poderosa-terminal.com)
 * [PuTTY](https://www.putty.org)
 * [QTerminal](https://github.com/lxqt/qterminal)
-* [Visual Studio Code](https://code.visualstudio.com)
 * [Windows Terminal](https://github.com/microsoft/terminal)
 
 "Windows Terminal" may be supported in a future release: https://github.com/microsoft/terminal/issues/3718.

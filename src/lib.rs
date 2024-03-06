@@ -14,7 +14,6 @@ pub enum Terminal {
     Tmux,
     XtermCompatible,
     Windows,
-    VSCode,
     Emacs,
 }
 
@@ -50,12 +49,6 @@ pub enum Error {
 /// get detected termnial
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
-    if let Ok(term_program) = env::var("TERM_PROGRAM") {
-        if term_program == "vscode" {
-            return Terminal::VSCode;
-        }
-    }
-
     if env::var("INSIDE_EMACS").is_ok() {
         return Terminal::Emacs;
     }
@@ -81,7 +74,7 @@ pub fn terminal() -> Terminal {
 pub fn terminal() -> Terminal {
     if let Ok(term_program) = env::var("TERM_PROGRAM") {
         if term_program == "vscode" {
-            return Terminal::VSCode;
+            return Terminal::XtermCompatible;
         }
     }
 
@@ -103,7 +96,6 @@ pub fn terminal() -> Terminal {
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     let rgb = match term {
-        Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
         _ => from_xterm(term, timeout),
     };
@@ -122,7 +114,6 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     let term = terminal();
     let rgb = match term {
-        Terminal::VSCode => Err(Error::Unsupported),
         Terminal::Emacs => Err(Error::Unsupported),
         Terminal::XtermCompatible => from_xterm(term, timeout),
         _ => from_winapi(),
@@ -142,7 +133,6 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
-        Terminal::VSCode => Ok(Duration::from_millis(0)),
         Terminal::Emacs => Ok(Duration::from_millis(0)),
         _ => xterm_latency(timeout),
     }
@@ -153,7 +143,6 @@ pub fn latency(timeout: Duration) -> Result<Duration, Error> {
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
     match term {
-        Terminal::VSCode => Ok(Duration::from_millis(0)),
         Terminal::Emacs => Ok(Duration::from_millis(0)),
         Terminal::XtermCompatible => xterm_latency(timeout),
         _ => Ok(Duration::from_millis(0)),
