@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.4.4...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.5.0...Unreleased) - ReleaseDate
+
+## [v0.5.0](https://github.com/dalance/termbg/compare/v0.4.4...v0.5.0) - 2024-03-06
 
 * [Breaking Changed] feat: upgrade crossterm to 0.27.0 [#22](https://github.com/dalance/termbg/pull/22)
 * [Changed] Remove special case for VSCode [#21](https://github.com/dalance/termbg/pull/21)
