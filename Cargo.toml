@@ -24,7 +24,7 @@ pre-release-replacements    = [
 
 [dependencies]
 async-std = "1"
-crossterm = "0.27"
+crossterm = "0.28"
 thiserror = "1"
 is-terminal = "0.4"
 
