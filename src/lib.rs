@@ -4,8 +4,11 @@ use std::env;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use tokio::runtime::Runtime;
 #[cfg(target_os = "windows")]
 use winapi::um::wincon;
+
+mod stdin;
 
 /// Terminal
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -44,6 +47,8 @@ pub enum Error {
     Parse(String),
     #[error("unsupported")]
     Unsupported,
+    #[error("timeout")]
+    Timeout,
 }
 
 /// get detected termnial
@@ -186,14 +191,19 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     write!(stderr, "{}", query)?;
     stderr.flush()?;
 
-    let buffer = async_std::task::block_on(async_std::io::timeout(timeout, async {
-        use async_std::io::ReadExt;
+    let rt = Runtime::new()?;
+    //let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let buffer: Result<_, Error> = rt.block_on(async {
+        use tokio::io::AsyncReadExt;
+        use tokio::time;
         let mut buffer = Vec::new();
-        let mut stdin = async_std::io::stdin();
+        let mut stdin = stdin::stdin()?;
         let mut buf = [0; 1];
         let mut start = false;
         loop {
-            let _ = stdin.read_exact(&mut buf).await?;
+            if let Err(_) = time::timeout(timeout, stdin.read_exact(&mut buf)).await {
+                return Err(Error::Timeout);
+            }
             // response terminated by BEL(0x7)
             if start && (buf[0] == 0x7) {
                 break;
@@ -201,7 +211,9 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
             // response terminated by ST(0x1b 0x5c)
             if start && (buf[0] == 0x1b) {
                 // consume last 0x5c
-                let _ = stdin.read_exact(&mut buf).await?;
+                if let Err(_) = time::timeout(timeout, stdin.read_exact(&mut buf)).await {
+                    return Err(Error::Timeout);
+                }
                 debug_assert_eq!(buf[0], 0x5c);
                 break;
             }
@@ -213,7 +225,7 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
             }
         }
         Ok(buffer)
-    }));
+    });
 
     terminal::disable_raw_mode()?;
 
@@ -288,19 +300,24 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
 
     let start = Instant::now();
 
-    let ret = async_std::task::block_on(async_std::io::timeout(timeout, async {
-        use async_std::io::ReadExt;
-        let mut stdin = async_std::io::stdin();
+    let rt = Runtime::new()?;
+    //let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let ret: Result<_, Error> = rt.block_on(async {
+        use tokio::io::AsyncReadExt;
+        use tokio::time;
+        let mut stdin = stdin::stdin()?;
         let mut buf = [0; 1];
         loop {
-            let _ = stdin.read_exact(&mut buf).await?;
+            if let Err(_) = time::timeout(timeout, stdin.read_exact(&mut buf)).await {
+                return Err(Error::Timeout);
+            }
             // response terminated by 'n'
             if buf[0] == b'n' {
                 break;
             }
         }
         Ok(())
-    }));
+    });
 
     let end = start.elapsed();
 
