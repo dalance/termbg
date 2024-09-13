@@ -8,7 +8,7 @@ use thiserror::Error;
 use winapi::um::wincon;
 
 /// Terminal
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Terminal {
     Screen,
     Tmux,
@@ -18,7 +18,7 @@ pub enum Terminal {
 }
 
 /// 16bit RGB color
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Rgb {
     pub r: u16,
     pub g: u16,
@@ -26,7 +26,7 @@ pub struct Rgb {
 }
 
 /// Background theme
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Theme {
     Light,
     Dark,
