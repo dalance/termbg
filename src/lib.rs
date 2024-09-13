@@ -1,6 +1,6 @@
 use crossterm::terminal;
-use is_terminal::IsTerminal;
 use std::env;
+use std::io::IsTerminal;
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 use thiserror::Error;
