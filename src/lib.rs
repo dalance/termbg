@@ -53,7 +53,7 @@ pub fn terminal() -> Terminal {
         return Terminal::Emacs;
     }
 
-    if env::var("TMUX").is_ok() {
+    if env::var("TMUX").is_ok() || env::var("TERM").is_ok_and(|x| x.starts_with("tmux-")) {
         Terminal::Tmux
     } else {
         let is_screen = if let Ok(term) = env::var("TERM") {
