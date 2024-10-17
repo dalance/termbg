@@ -11,7 +11,7 @@ use thiserror::Error;
 use {
     std::sync::OnceLock, winapi::um::consoleapi::SetConsoleMode,
     winapi::um::handleapi::INVALID_HANDLE_VALUE, winapi::um::processenv::GetStdHandle,
-    winapi::um::winbase::STD_OUTPUT_HANDLE, winapi::um::wincon::ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+    winapi::um::winbase::STD_OUTPUT_HANDLE, winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
 };
 
 /// Terminal
@@ -189,7 +189,7 @@ pub fn theme(timeout: Duration) -> Result<Theme, Error> {
 #[cfg(target_os = "windows")]
 fn enable_virtual_terminal_processing() -> bool {
     static ENABLE_VT_PROCESSING: OnceLock<bool> = OnceLock::new();
-    ENABLE_VT_PROCESSING.get_or_init(|| unsafe {
+    *ENABLE_VT_PROCESSING.get_or_init(|| unsafe {
         let handle = GetStdHandle(STD_OUTPUT_HANDLE);
         if handle != INVALID_HANDLE_VALUE {
             let mut mode: u32 = 0;
@@ -230,11 +230,11 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         };
 
         if is_raw == raw_before {
-            debug!("Raw mode status unchanged.");
+            debug!("Raw mode status unchanged from raw={raw_before}.");
         } else if let Err(e) = restore_raw_status(raw_before) {
-            debug!("Failed to restore raw mode: {e:?}");
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
         } else {
-            debug!("Raw mode restored to previous state.");
+            debug!("Raw mode restored to previous state (raw={raw_before}).");
         }
 
         if let Err(e) = clear_stdin() {
@@ -406,36 +406,9 @@ fn from_env_colorfgbg() -> Result<Rgb, Error> {
     })
 }
 
-fn xterm_latency_bad(timeout: Duration) -> Result<Duration, Error> {
-    // Query by XTerm control sequence
+fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
     let query = "\x1b[5n";
-
-    // let mut stderr = io::stderr();
-    //     terminal::enable_raw_mode()?;
-    //     write!(stderr, "{}", query)?;
-    //     stderr.flush()?;
-    //
-    //     let start = Instant::now();
-    //
-    //     let ret = async_std::task::block_on(async_std::io::timeout(timeout, async {
-    //         use async_std::io::ReadExt;
-    //         let mut stdin = async_std::io::stdin();
-    //         let mut buf = [0; 1];
-    //         loop {
-    //             let _ = stdin.read_exact(&mut buf).await?;
-    //             // response terminated by 'n'
-    //             if buf[0] == b'n' {
-    //                 break;
-    //             }
-    //         }
-    //         Ok(())
-    //     }));
-    //
-    //     let end = start.elapsed();
-    //
-    //     terminal::disable_raw_mode()?;
-    //
-    //     let _ = ret?;
+    let mut stderr = io::stderr();
 
     let raw_before = is_raw_mode_enabled()?;
 
@@ -449,11 +422,11 @@ fn xterm_latency_bad(timeout: Duration) -> Result<Duration, Error> {
         };
 
         if is_raw == raw_before {
-            debug!("Raw mode status unchanged.");
+            debug!("Raw mode status unchanged from raw={raw_before}.");
         } else if let Err(e) = restore_raw_status(raw_before) {
-            debug!("Failed to restore raw mode: {e:?}");
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
         } else {
-            debug!("Raw mode restored to previous state.");
+            debug!("Raw mode restored to previous state (raw={raw_before}).");
         }
 
         if let Err(e) = clear_stdin() {
@@ -466,70 +439,6 @@ fn xterm_latency_bad(timeout: Duration) -> Result<Duration, Error> {
     if !raw_before {
         terminal::enable_raw_mode()?;
     }
-
-    let mut stderr = io::stderr();
-
-    #[cfg(target_os = "windows")]
-    {
-        if !enable_virtual_terminal_processing() {
-            debug!(
-                "Virtual Terminal Processing could not be enabled. Falling back to default behavior."
-            );
-            return from_winapi();
-        }
-    }
-
-    let mut response = String::new();
-
-    // Send query
-    writeln!(stderr, "{query}")?;
-    stderr.flush()?;
-
-    let start_time = Instant::now();
-
-    // Main loop for capturing terminal response
-    loop {
-        if start_time.elapsed() > timeout {
-            debug!("Failed to capture response");
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
-        }
-
-        // Replaced expensive async_std with blocking loop. Terminal normally responds
-        // fast or not at all, and in the latter case we still have the timeout on the
-        // main loop.
-        if poll(Duration::from_millis(100))? {
-            // Read the next event.
-            // Replaced stdin read that was consuming legit user input in Windows
-            // with non-blocking crossterm read event.
-            if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    // End on 'n' character
-                    KeyCode::Char('n') => {
-                        let elapsed = start_time.elapsed();
-                        response.push('n');
-                        debug!("End of response detected ('n').");
-                        debug!("Full response was [{response}].");
-                        debug!("Elapsed time: {:.2?}", elapsed);
-
-                        return Ok(elapsed);
-                    }
-                    // Append other characters to buffer
-                    KeyCode::Char(c) => {
-                        debug!("pushing {c}");
-                        response.push(c);
-                    }
-                    _ => {
-                        // Ignore other keys
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
-    let query = "\x1b[5n";
-    let mut stderr = io::stderr();
 
     // Send the query
     stderr.write_all(query.as_bytes())?;
@@ -557,10 +466,9 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
 
             // End the loop once we detect the 'n' character
             if response.ends_with('n') {
-                terminal::disable_raw_mode()?; // Clean up raw mode
                 let elapsed = start_time.elapsed();
-                debug!("Full response: [{}]", response);
-                debug!("Elapsed time: {:.2?}", elapsed);
+                debug!("Full response: [{response:x?}]");
+                // debug!("Elapsed time: {elapsed:?}");
 
                 return Ok(elapsed);
             }
