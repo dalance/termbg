@@ -28,10 +28,6 @@ log = "0.4"
 scopeguard = "1.2"
 thiserror = "1"
 
-[dev-dependencies]
-assert_cmd = "2"
-predicates = "3.1"
-
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
     "wincon",

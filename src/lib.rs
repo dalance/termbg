@@ -9,12 +9,9 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 #[cfg(target_os = "windows")]
 use {
-    std::sync::OnceLock,
-    winapi::um::consoleapi::SetConsoleMode,
-    winapi::um::handleapi::INVALID_HANDLE_VALUE,
-    winapi::um::processenv::GetStdHandle,
-    winapi::um::winbase::STD_OUTPUT_HANDLE,
-    winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
+    std::sync::OnceLock, winapi::um::consoleapi::SetConsoleMode,
+    winapi::um::handleapi::INVALID_HANDLE_VALUE, winapi::um::processenv::GetStdHandle,
+    winapi::um::winbase::STD_OUTPUT_HANDLE, winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
 };
 
 /// Terminal
@@ -565,28 +562,5 @@ mod tests {
 
         let s = "1/2/3";
         assert_eq!((0x1000, 0x2000, 0x3000), decode_x11_color(s).unwrap());
-    }
-
-    /// This test will simulate typing input after the termbg::rgb call and check if the first character is missing
-    use std::io::{Cursor, Read};
-
-    #[test]
-    fn test_rgb_does_not_swallow_input() {
-        // Call termbg::rgb with a timeout, simulating the behavior
-        let timeout = Duration::from_millis(2000);
-        let _rgb = rgb(timeout); // The RGB call
-
-        // Simulate stdin input using Cursor (acts like stdin, but with predefined data)
-        let input = b"Hello"; // This is the input we want to simulate
-
-        // Create a Cursor to simulate user typing "Hello" into stdin
-        let mut fake_stdin = Cursor::new(input);
-
-        // Read from the fake stdin into a buffer
-        let mut buffer = String::new();
-        fake_stdin.read_to_string(&mut buffer).unwrap();
-
-        // Check if the buffer contains the expected input (i.e., no characters are swallowed)
-        assert_eq!(buffer, "Hello", "The first character was swallowed!");
     }
 }
