@@ -344,7 +344,6 @@ fn restore_raw_status(raw_before: bool) -> Result<(), Error> {
 /// This function will return an error if Rust has decided that the "terminal" is not a terminal.
 // Helper function to discard extra characters
 fn clear_stdin() -> Result<(), Box<dyn std::error::Error>> {
-    // let mut buf = [0; 1];
     while poll(Duration::from_millis(10))? {
         if let Event::Key(c) = read()? {
             // Discard the input by simply reading it
