@@ -9,9 +9,12 @@ use std::time::{Duration, Instant};
 use thiserror::Error;
 #[cfg(target_os = "windows")]
 use {
-    std::sync::OnceLock, winapi::um::consoleapi::SetConsoleMode,
-    winapi::um::handleapi::INVALID_HANDLE_VALUE, winapi::um::processenv::GetStdHandle,
-    winapi::um::winbase::STD_OUTPUT_HANDLE, winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
+    std::sync::OnceLock,
+    winapi::um::consoleapi::SetConsoleMode,
+    winapi::um::handleapi::INVALID_HANDLE_VALUE,
+    winapi::um::processenv::GetStdHandle,
+    winapi::um::winbase::STD_OUTPUT_HANDLE,
+    winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
 };
 
 /// Terminal
@@ -268,17 +271,11 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     };
 
     // Send query
-    writeln!(stderr, "{query}")?;
+    write!(stderr, "{query}")?;
     stderr.flush()?;
 
     let mut response = String::new();
     let start_time = Instant::now();
-
-    let timeout = if cfg!(target_os = "windows") {
-        Duration::from_secs(2) // Adjust as needed
-    } else {
-        timeout
-    };
 
     // Main loop for capturing terminal response
     loop {
