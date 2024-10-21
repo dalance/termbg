@@ -12,20 +12,26 @@ edition = "2018"
 
 
 [package.metadata.release]
-pre-release-commit-message  = "Prepare to v{{version}}"
-tag-message                 = "Bump version to {{version}}"
-tag-prefix                  = ""
-pre-release-replacements    = [
-    {file = "README.md", search = "termbg = \"[a-z0-9\\.-]+\"", replace = "termbg = \"{{version}}\""},
-    {file = "CHANGELOG.md", search = "Unreleased", replace = "v{{version}}"},
-    {file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}"},
-    {file = "CHANGELOG.md", search = "Change Log", replace = "Change Log\n\n## [Unreleased](https://github.com/dalance/termbg/compare/v{{version}}...Unreleased) - ReleaseDate"},
+pre-release-commit-message = "Prepare to v{{version}}"
+tag-message = "Bump version to {{version}}"
+tag-prefix = ""
+pre-release-replacements = [
+    { file = "README.md", search = "termbg = \"[a-z0-9\\.-]+\"", replace = "termbg = \"{{version}}\"" },
+    { file = "CHANGELOG.md", search = "Unreleased", replace = "v{{version}}" },
+    { file = "CHANGELOG.md", search = "ReleaseDate", replace = "{{date}}" },
+    { file = "CHANGELOG.md", search = "Change Log", replace = "Change Log\n\n## [Unreleased](https://github.com/dalance/termbg/compare/v{{version}}...Unreleased) - ReleaseDate" },
 ]
 
 [dependencies]
-async-std = "1"
 crossterm = "0.28"
+log = "0.4"
+scopeguard = "1.2"
 thiserror = "1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-winapi = { version = "0.3", features = ["wincon", "winbase", "processenv", "impl-default"] }
+winapi = { version = "0.3", features = [
+    "wincon",
+    "winbase",
+    "processenv",
+    "impl-default",
+] }

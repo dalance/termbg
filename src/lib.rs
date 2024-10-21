@@ -1,11 +1,21 @@
-use crossterm::terminal;
+use crossterm::event::{self, poll, read, Event, KeyCode};
+use crossterm::terminal::{self, is_raw_mode_enabled};
+use log::debug;
+use scopeguard::defer;
 use std::env;
 use std::io::IsTerminal;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
 use thiserror::Error;
 #[cfg(target_os = "windows")]
-use winapi::um::wincon;
+use {
+    std::sync::OnceLock,
+    winapi::um::consoleapi::SetConsoleMode,
+    winapi::um::handleapi::INVALID_HANDLE_VALUE,
+    winapi::um::processenv::GetStdHandle,
+    winapi::um::winbase::STD_OUTPUT_HANDLE,
+    winapi::um::wincon::{self, ENABLE_VIRTUAL_TERMINAL_PROCESSING},
+};
 
 /// Terminal
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -72,6 +82,9 @@ pub fn terminal() -> Terminal {
 /// get detected termnial
 #[cfg(target_os = "windows")]
 pub fn terminal() -> Terminal {
+    // Although xterm OSC is MS's roadmap, as of 2024-10-16, only Windows Terminal 1.22 (preview)
+    // supports *querying* rgb values. In the mean time, there is effectively no way to query
+    // Windows color schemes.
     if let Ok(term_program) = env::var("TERM_PROGRAM") {
         if term_program == "vscode" {
             return Terminal::XtermCompatible;
@@ -83,10 +96,21 @@ pub fn terminal() -> Terminal {
     }
 
     // Windows Terminal is Xterm-compatible
-    // https://github.com/microsoft/terminal/issues/3718
-    if env::var("WT_SESSION").is_ok() {
+    // https://github.com/microsoft/terminal/issues/3718.
+    // But this excludes OSC 10/11 colour queries until Windows Terminal 1.22
+    // https://devblogs.microsoft.com/commandline/windows-terminal-preview-1-22-release/:
+    // "Applications can now query ... the default foreground (OSC 10 ?) [and] background (OSC 11 ?)"
+    // Don't use WT_SESSION for this purpose:
+    // https://github.com/Textualize/rich/issues/140
+    // if env::var("WT_SESSION").is_ok() {
+    if enable_virtual_terminal_processing() {
+        debug!(
+            r#"This Windows terminal supports virtual terminal processing
+(but not OSC 10/11 colour queries if prior to Windows Terminal 1.22 Preview of August 2024)"#
+        );
         Terminal::XtermCompatible
     } else {
+        debug!("Terminal::Windows");
         Terminal::Windows
     }
 }
@@ -119,6 +143,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
         _ => from_winapi(),
     };
     let fallback = from_env_colorfgbg();
+    debug!("rgb={rgb:?}, fallback={fallback:?}");
     if rgb.is_ok() {
         rgb
     } else if fallback.is_ok() {
@@ -163,6 +188,30 @@ pub fn theme(timeout: Duration) -> Result<Theme, Error> {
     }
 }
 
+// Function to enable virtual terminal processing for Windows
+#[cfg(target_os = "windows")]
+fn enable_virtual_terminal_processing() -> bool {
+    static ENABLE_VT_PROCESSING: OnceLock<bool> = OnceLock::new();
+    *ENABLE_VT_PROCESSING.get_or_init(|| unsafe {
+        let handle = GetStdHandle(STD_OUTPUT_HANDLE);
+        if handle != INVALID_HANDLE_VALUE {
+            let mut mode: u32 = 0;
+            if winapi::um::consoleapi::GetConsoleMode(handle, &mut mode) != 0 {
+                // Try to set virtual terminal processing mode
+                if SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0 {
+                    // Success in enabling VT
+                    return true;
+                } else {
+                    // Failed to enable VT, optionally log error
+                    eprintln!("Failed to enable Virtual Terminal Processing.");
+                }
+            }
+        }
+        // Return false if enabling VT failed
+        false
+    })
+}
+
 fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     if !std::io::stdin().is_terminal()
         || !std::io::stdout().is_terminal()
@@ -172,59 +221,136 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         return Err(Error::Unsupported);
     }
 
-    // Query by XTerm control sequence
-    let query = if term == Terminal::Tmux {
-        "\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\\x03"
-    } else if term == Terminal::Screen {
-        "\x1bP\x1b]11;?\x07\x1b\\\x03"
-    } else {
-        "\x1b]11;?\x1b\\"
-    };
+    let raw_before = is_raw_mode_enabled()?;
+
+    defer! {
+        let is_raw = match is_raw_mode_enabled() {
+            Ok(val) => val,
+            Err(e) => {
+                debug!("Failed to check raw mode status: {:?}", e);
+                return;
+            }
+        };
+
+        if is_raw == raw_before {
+            debug!("Raw mode status unchanged from raw={raw_before}.");
+        } else if let Err(e) = restore_raw_status(raw_before) {
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
+        } else {
+            debug!("Raw mode restored to previous state (raw={raw_before}).");
+        }
+
+        if let Err(e) = clear_stdin() {
+            debug!("Failed to clear stdin: {e:?}");
+        } else {
+            debug!("Cleared any excess from stdin.");
+        }
+    }
+
+    if !raw_before {
+        terminal::enable_raw_mode()?;
+    }
 
     let mut stderr = io::stderr();
-    terminal::enable_raw_mode()?;
-    write!(stderr, "{}", query)?;
+
+    #[cfg(target_os = "windows")]
+    {
+        if !enable_virtual_terminal_processing() {
+            debug!(
+                "Virtual Terminal Processing could not be enabled. Falling back to default behavior."
+            );
+            return from_winapi();
+        }
+    }
+
+    // Query by XTerm control sequence
+    let query = match term {
+        Terminal::Tmux => "\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\",
+        Terminal::Screen => "\x1bP\x1b]11;?\x07\x1b\\",
+        _ => "\x1b]11;?\x1b\\",
+    };
+
+    // Send query
+    write!(stderr, "{query}")?;
     stderr.flush()?;
 
-    let buffer = async_std::task::block_on(async_std::io::timeout(timeout, async {
-        use async_std::io::ReadExt;
-        let mut buffer = Vec::new();
-        let mut stdin = async_std::io::stdin();
-        let mut buf = [0; 1];
-        let mut start = false;
-        loop {
-            let _ = stdin.read_exact(&mut buf).await?;
-            // response terminated by BEL(0x7)
-            if start && (buf[0] == 0x7) {
-                break;
-            }
-            // response terminated by ST(0x1b 0x5c)
-            if start && (buf[0] == 0x1b) {
-                // consume last 0x5c
-                let _ = stdin.read_exact(&mut buf).await?;
-                debug_assert_eq!(buf[0], 0x5c);
-                break;
-            }
-            if start {
-                buffer.push(buf[0]);
-            }
-            if buf[0] == b':' {
-                start = true;
+    let mut response = String::new();
+    let start_time = Instant::now();
+
+    // Main loop for capturing terminal response
+    loop {
+        if start_time.elapsed() > timeout {
+            debug!("Failed to capture response");
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
+        }
+
+        // Replaced expensive async_std with blocking loop. Terminal normally responds
+        // fast or not at all, and in the latter case we still have the timeout on the
+        // main loop.
+        if poll(Duration::from_millis(100))? {
+            // Read the next event.
+            // Replaced stdin read that was consuming legit user input in Windows
+            // with non-blocking crossterm read event.
+            if let Event::Key(key_event) = event::read()? {
+                match key_event.code {
+                    // End on backslash character
+                    KeyCode::Char('\\') => {
+                        debug!("End of response detected (backslash character).");
+                        // response.push('\\');
+                        let rgb_string = response.split_off(response.find("rgb:").unwrap() + 4);
+                        let (r, g, b) = decode_x11_color(&rgb_string)?;
+
+                        // Err("RGB color value not found".into())
+                        // Print the duration it took to capture the response
+                        let elapsed = start_time.elapsed();
+                        debug!("Elapsed time: {:.2?}", elapsed);
+
+                        return Ok(Rgb { r, g, b });
+                    }
+                    // Append other characters to buffer
+                    KeyCode::Char(c) => {
+                        // debug!("pushing {c}");
+                        response.push(c);
+                    }
+                    _ => {
+                        // Ignore other keys
+                    }
+                }
             }
         }
-        Ok(buffer)
-    }));
-
-    terminal::disable_raw_mode()?;
-
-    // Should return by error after disable_raw_mode
-    let buffer = buffer?;
-
-    let s = String::from_utf8_lossy(&buffer);
-    let (r, g, b) = decode_x11_color(&*s)?;
-    Ok(Rgb { r, g, b })
+    }
 }
 
+fn restore_raw_status(raw_before: bool) -> Result<(), Error> {
+    let raw_now = is_raw_mode_enabled()?;
+    if raw_now == raw_before {
+        return Ok(());
+    }
+    if raw_before {
+        terminal::enable_raw_mode()?;
+    } else {
+        terminal::disable_raw_mode()?;
+    }
+    Ok(())
+}
+
+/// Discard any unread input returned by the OSC 11 query.
+///
+/// # Errors
+///
+/// This function will return an error if Rust has decided that the "terminal" is not a terminal.
+// Helper function to discard extra characters
+fn clear_stdin() -> Result<(), Box<dyn std::error::Error>> {
+    while poll(Duration::from_millis(10))? {
+        if let Event::Key(c) = read()? {
+            // Discard the input by simply reading it
+            debug!("discarding char{c:x?}");
+        }
+    }
+    Ok(())
+}
+
+/// Seems to be for Rxvt terminal emulator only.
 fn from_env_colorfgbg() -> Result<Rgb, Error> {
     let var = env::var("COLORFGBG").map_err(|_| Error::Unsupported)?;
     let fgbg: Vec<_> = var.split(";").collect();
@@ -278,37 +404,73 @@ fn from_env_colorfgbg() -> Result<Rgb, Error> {
 }
 
 fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
-    // Query by XTerm control sequence
     let query = "\x1b[5n";
-
     let mut stderr = io::stderr();
-    terminal::enable_raw_mode()?;
-    write!(stderr, "{}", query)?;
+
+    let raw_before = is_raw_mode_enabled()?;
+
+    defer! {
+        let is_raw = match is_raw_mode_enabled() {
+            Ok(val) => val,
+            Err(e) => {
+                debug!("Failed to check raw mode status: {:?}", e);
+                return;
+            }
+        };
+
+        if is_raw == raw_before {
+            debug!("Raw mode status unchanged from raw={raw_before}.");
+        } else if let Err(e) = restore_raw_status(raw_before) {
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
+        } else {
+            debug!("Raw mode restored to previous state (raw={raw_before}).");
+        }
+
+        if let Err(e) = clear_stdin() {
+            debug!("Failed to clear stdin: {e:?}");
+        } else {
+            debug!("Cleared any excess from stdin.");
+        }
+    }
+
+    if !raw_before {
+        terminal::enable_raw_mode()?;
+    }
+
+    // Send the query
+    stderr.write_all(query.as_bytes())?;
     stderr.flush()?;
 
-    let start = Instant::now();
+    let start_time = Instant::now();
 
-    let ret = async_std::task::block_on(async_std::io::timeout(timeout, async {
-        use async_std::io::ReadExt;
-        let mut stdin = async_std::io::stdin();
-        let mut buf = [0; 1];
-        loop {
-            let _ = stdin.read_exact(&mut buf).await?;
-            // response terminated by 'n'
-            if buf[0] == b'n' {
-                break;
+    // Enter raw mode to capture input
+    terminal::enable_raw_mode()?;
+    let mut stdin = io::stdin();
+    let mut response = String::new();
+
+    // Main loop to capture response
+    loop {
+        // Check for timeout
+        if start_time.elapsed() > timeout {
+            terminal::disable_raw_mode()?; // Clean up raw mode
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
+        }
+
+        // Non-blocking read attempt from stdin
+        let mut buffer = [0u8; 1];
+        if stdin.read(&mut buffer).is_ok() {
+            response.push(buffer[0] as char);
+
+            // End the loop once we detect the 'n' character
+            if response.ends_with('n') {
+                let elapsed = start_time.elapsed();
+                debug!("Full response: [{response:x?}]");
+                // debug!("Elapsed time: {elapsed:?}");
+
+                return Ok(elapsed);
             }
         }
-        Ok(())
-    }));
-
-    let end = start.elapsed();
-
-    terminal::disable_raw_mode()?;
-
-    let _ = ret?;
-
-    Ok(end)
+    }
 }
 
 fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
@@ -319,7 +481,7 @@ fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
         Ok(ret)
     }
 
-    let rgb: Vec<_> = s.split("/").collect();
+    let rgb: Vec<_> = s.split('/').collect();
 
     let r = rgb.get(0).ok_or_else(|| Error::Parse(String::from(s)))?;
     let g = rgb.get(1).ok_or_else(|| Error::Parse(String::from(s)))?;
