@@ -1,6 +1,8 @@
 # Change Log
 
-## [Unreleased](https://github.com/dalance/termbg/compare/v0.5.2...Unreleased) - ReleaseDate
+## [Unreleased](https://github.com/dalance/termbg/compare/v0.6.0...Unreleased) - ReleaseDate
+
+## [v0.6.0](https://github.com/dalance/termbg/compare/v0.5.2...v0.6.0) - 2024-10-21
 
 * [Fixed] Stdin is blocked [#29](https://github.com/dalance/termbg/pull/29)
 
