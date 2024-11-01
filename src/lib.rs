@@ -1,4 +1,4 @@
-use crossterm::event::{self, poll, read, Event, KeyCode};
+use crossterm::event::{self, poll, read, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, is_raw_mode_enabled};
 use log::debug;
 use scopeguard::defer;
@@ -56,7 +56,7 @@ pub enum Error {
     Unsupported,
 }
 
-/// get detected termnial
+/// get detected terminal
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
     if env::var("INSIDE_EMACS").is_ok() {
@@ -79,7 +79,7 @@ pub fn terminal() -> Terminal {
     }
 }
 
-/// get detected termnial
+/// get detected terminal
 #[cfg(target_os = "windows")]
 pub fn terminal() -> Terminal {
     // Although xterm OSC is MS's roadmap, as of 2024-10-16, only Windows Terminal 1.22 (preview)
@@ -105,12 +105,11 @@ pub fn terminal() -> Terminal {
     // if env::var("WT_SESSION").is_ok() {
     if enable_virtual_terminal_processing() {
         debug!(
-            r#"This Windows terminal supports virtual terminal processing
-(but not OSC 10/11 colour queries if prior to Windows Terminal 1.22 Preview of August 2024)"#
-        );
+                "This Windows terminal supports virtual terminal processing (but not OSC 10/11 colour queries if prior to Windows Terminal 1.22 Preview of August 2024)\r"
+            );
         Terminal::XtermCompatible
     } else {
-        debug!("Terminal::Windows");
+        debug!("Terminal::Windows\r");
         Terminal::Windows
     }
 }
@@ -143,7 +142,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
         _ => from_winapi(),
     };
     let fallback = from_env_colorfgbg();
-    debug!("rgb={rgb:?}, fallback={fallback:?}");
+    debug!("rgb={rgb:?}, fallback={fallback:?}\r");
     if rgb.is_ok() {
         rgb
     } else if fallback.is_ok() {
@@ -153,7 +152,7 @@ pub fn rgb(timeout: Duration) -> Result<Rgb, Error> {
     }
 }
 
-/// get background color by `RGB`
+/// get terminal latency
 #[cfg(not(target_os = "windows"))]
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
@@ -163,7 +162,7 @@ pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     }
 }
 
-/// get background color by `RGB`
+/// get terminal latency
 #[cfg(target_os = "windows")]
 pub fn latency(timeout: Duration) -> Result<Duration, Error> {
     let term = terminal();
@@ -200,10 +199,11 @@ fn enable_virtual_terminal_processing() -> bool {
                 // Try to set virtual terminal processing mode
                 if SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) != 0 {
                     // Success in enabling VT
+                    debug!("Successfully enabled Virtual Terminal Processing.\r");
                     return true;
                 } else {
                     // Failed to enable VT, optionally log error
-                    eprintln!("Failed to enable Virtual Terminal Processing.");
+                    debug!("Failed to enable Virtual Terminal Processing.\r");
                 }
             }
         }
@@ -227,23 +227,23 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         let is_raw = match is_raw_mode_enabled() {
             Ok(val) => val,
             Err(e) => {
-                debug!("Failed to check raw mode status: {:?}", e);
+                debug!("Failed to check raw mode status: {:?}\r", e);
                 return;
             }
         };
 
         if is_raw == raw_before {
-            debug!("Raw mode status unchanged from raw={raw_before}.");
+            debug!("Raw mode status unchanged from raw={raw_before}.\r");
         } else if let Err(e) = restore_raw_status(raw_before) {
-            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}\r");
         } else {
-            debug!("Raw mode restored to previous state (raw={raw_before}).");
+            debug!("Raw mode restored to previous state (raw={raw_before}).\r");
         }
 
         if let Err(e) = clear_stdin() {
-            debug!("Failed to clear stdin: {e:?}");
+            debug!("Failed to clear stdin: {e:?}\r");
         } else {
-            debug!("Cleared any excess from stdin.");
+            debug!("Cleared any excess from stdin.\r");
         }
     }
 
@@ -257,7 +257,7 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     {
         if !enable_virtual_terminal_processing() {
             debug!(
-                "Virtual Terminal Processing could not be enabled. Falling back to default behavior."
+                "Virtual Terminal Processing could not be enabled. Falling back to default behavior.\r"
             );
             return from_winapi();
         }
@@ -280,7 +280,13 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     // Main loop for capturing terminal response
     loop {
         if start_time.elapsed() > timeout {
-            debug!("Failed to capture response");
+            debug!("After timeout, found response={response}\r");
+            if response.contains("rgb:") {
+                let rgb_slice = decode_unterminated(&response)?;
+                debug!("Found a valid response {rgb_slice} in pre-timeout check despite unrecognized terminator in response code {response:#?}\r");
+                return parse_response(rgb_slice, start_time);
+            }
+            debug!("Failed to capture response\r");
             return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
         }
 
@@ -292,33 +298,84 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
             // Replaced stdin read that was consuming legit user input in Windows
             // with non-blocking crossterm read event.
             if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    // End on backslash character
-                    KeyCode::Char('\\') => {
-                        debug!("End of response detected (backslash character).");
+                match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Char('\\'), KeyModifiers::ALT | KeyModifiers::NONE)   // ST
+                    | (KeyCode::Char('g'), KeyModifiers::CONTROL)   // BEL
+                    // Insurance in case BEL is not recognosed as ^g
+                    | (KeyCode::Char('\u{0007}'), KeyModifiers::NONE)   //BEL
+                    => {
+                        debug!("End of response detected ({key_event:?}).\r");
                         // response.push('\\');
-                        let rgb_string = response.split_off(response.find("rgb:").unwrap() + 4);
-                        let (r, g, b) = decode_x11_color(&rgb_string)?;
-
-                        // Err("RGB color value not found".into())
-                        // Print the duration it took to capture the response
-                        let elapsed = start_time.elapsed();
-                        debug!("Elapsed time: {:.2?}", elapsed);
-
-                        return Ok(Rgb { r, g, b });
+                        // debug!("response={response}\r");
+                        return parse_response(&response, start_time);
                     }
                     // Append other characters to buffer
-                    KeyCode::Char(c) => {
-                        // debug!("pushing {c}");
+                    (KeyCode::Char(c), KeyModifiers::NONE) => {
+                        debug!("pushing {c}\r");
                         response.push(c);
                     }
                     _ => {
                         // Ignore other keys
+                        debug!("ignoring {key_event:?}\r");
                     }
                 }
             }
         }
     }
+}
+
+fn decode_unterminated(response: &str) -> Result<&str, Error> {
+    let resp_start = response.find("rgb:").ok_or(Error::Parse(
+        "Required string `rgb:` not found in response".to_string(),
+    ))?;
+    let mid = resp_start + 4;
+    // Point after "rgb:"
+    let raw_rgb_slice = response.split_at(mid).1;
+    // slash-delimited r/g/b string with any trailing characters
+    debug!("raw_rgb_slice={raw_rgb_slice}\r");
+
+    // Identify where to trim trailing characters, by assuming the slash-delimited colour specifiers
+    // are all supposed to be the same length. I.e. trim after 3 specifiers and 2 delimiters.
+    let fragments = raw_rgb_slice.splitn(3, '/').collect::<Vec<_>>();
+
+    if fragments.len() < 3 {
+        // debug!("Incomplete response `{response}`: does not contain two forward slashes\r");
+        return Err(Error::Parse(format!(
+            "Incomplete response `{response}`: does not contain two forward slashes"
+        )));
+    }
+    let frag_len = fragments[0].len();
+    if fragments[1].len() != frag_len || fragments[2].len() < frag_len {
+        // debug!("Can't safely reconstitute unterminated response `{response}`from fragments of unequal length\r");
+        return Err(Error::Parse(format!("Can't safely reconstitute unterminated response `{response}`from fragments of unequal length")));
+    }
+
+    // "Trim" extraneous trailing characters by excluding them from slice
+    let rgb_str_len = frag_len * 3 + 2;
+    let rgb_slice = &response[resp_start..mid + rgb_str_len];
+    Ok(rgb_slice)
+}
+
+fn parse_response(response: &str, start_time: Instant) -> Result<Rgb, Error> {
+    // debug!("response={response}\r");
+    let (r, g, b) = extract_rgb(response)?;
+    let elapsed = start_time.elapsed();
+    debug!("Elapsed time: {:.2?}\r", elapsed);
+    // debug!("Rgb {{ r, g, b }} = {:?}\r", Rgb { r, g, b });
+    Ok(Rgb { r, g, b })
+}
+
+fn extract_rgb(response: &str) -> Result<(u16, u16, u16), Error> {
+    let rgb_str = response
+        .split_at(
+            response.find("rgb:").ok_or(Error::Parse(
+                "Could not find 'rgb:' in terminal response string".to_string(),
+            ))? + 4,
+        )
+        .1;
+    let (r, g, b) = decode_x11_color(rgb_str)?;
+    // debug!("(r, g, b)=({r}, {g}, {b})\r");
+    Ok((r, g, b))
 }
 
 fn restore_raw_status(raw_before: bool) -> Result<(), Error> {
@@ -344,7 +401,7 @@ fn clear_stdin() -> Result<(), Box<dyn std::error::Error>> {
     while poll(Duration::from_millis(10))? {
         if let Event::Key(c) = read()? {
             // Discard the input by simply reading it
-            debug!("discarding char{c:x?}");
+            debug!("discarding char{c:x?}\r");
         }
     }
     Ok(())
@@ -358,6 +415,7 @@ fn from_env_colorfgbg() -> Result<Rgb, Error> {
     let bg = u8::from_str_radix(bg, 10).map_err(|_| Error::Parse(String::from(var)))?;
 
     // rxvt default color table
+    #[allow(clippy::match_same_arms)]
     let (r, g, b) = match bg {
         // black
         0 => (0, 0, 0),
@@ -413,23 +471,23 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
         let is_raw = match is_raw_mode_enabled() {
             Ok(val) => val,
             Err(e) => {
-                debug!("Failed to check raw mode status: {:?}", e);
+                debug!("Failed to check raw mode status: {:?}\r", e);
                 return;
             }
         };
 
         if is_raw == raw_before {
-            debug!("Raw mode status unchanged from raw={raw_before}.");
+            debug!("Raw mode status unchanged from raw={raw_before}.\r");
         } else if let Err(e) = restore_raw_status(raw_before) {
-            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}");
+            debug!("Failed to restore raw mode: {e:?} to raw={raw_before}\r");
         } else {
-            debug!("Raw mode restored to previous state (raw={raw_before}).");
+            debug!("Raw mode restored to previous state (raw={raw_before}).\r");
         }
 
         if let Err(e) = clear_stdin() {
-            debug!("Failed to clear stdin: {e:?}");
+            debug!("Failed to clear stdin: {e:?}\r");
         } else {
-            debug!("Cleared any excess from stdin.");
+            debug!("Cleared any excess from stdin.\r");
         }
     }
 
@@ -464,8 +522,8 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
             // End the loop once we detect the 'n' character
             if response.ends_with('n') {
                 let elapsed = start_time.elapsed();
-                debug!("Full response: [{response:x?}]");
-                // debug!("Elapsed time: {elapsed:?}");
+                debug!("Latency full response: [{response:x?}]\r");
+                // debug!("Elapsed time: {elapsed:?}\r");
 
                 return Ok(elapsed);
             }
@@ -493,14 +551,25 @@ fn decode_x11_color(s: &str) -> Result<(u16, u16, u16), Error> {
     Ok((r, g, b))
 }
 
+/// Try to determine the background colour from the legacy Windows Console interface.
+/// Unfortunately, unless the colour was explicitly set by that interface, it will
+/// just return the default of rgb(0,0,0). This renders it effectively useless for
+/// modern Windows.
+///
+/// # Errors
+///
+/// This function will bubble up any errors returned by the Windows API.
 #[cfg(target_os = "windows")]
 fn from_winapi() -> Result<Rgb, Error> {
+    debug!("In from_winapi()\r");
     let info = unsafe {
         let handle = winapi::um::processenv::GetStdHandle(winapi::um::winbase::STD_OUTPUT_HANDLE);
         let mut info: wincon::CONSOLE_SCREEN_BUFFER_INFO = Default::default();
         wincon::GetConsoleScreenBufferInfo(handle, &mut info);
         info
     };
+
+    debug!("info.wAttributes={:x?}\r", info.wAttributes);
 
     let r = (wincon::BACKGROUND_RED & info.wAttributes) != 0;
     let g = (wincon::BACKGROUND_GREEN & info.wAttributes) != 0;
