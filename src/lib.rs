@@ -1,4 +1,4 @@
-use crossterm::event::{self, poll, read, Event, KeyCode};
+use crossterm::event::{self, poll, read, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, is_raw_mode_enabled};
 use log::debug;
 use scopeguard::defer;
@@ -56,7 +56,7 @@ pub enum Error {
     Unsupported,
 }
 
-/// get detected termnial
+/// get detected terminal
 #[cfg(not(target_os = "windows"))]
 pub fn terminal() -> Terminal {
     if env::var("INSIDE_EMACS").is_ok() {
@@ -79,7 +79,7 @@ pub fn terminal() -> Terminal {
     }
 }
 
-/// get detected termnial
+/// get detected terminal
 #[cfg(target_os = "windows")]
 pub fn terminal() -> Terminal {
     // Although xterm OSC is MS's roadmap, as of 2024-10-16, only Windows Terminal 1.22 (preview)
@@ -292,10 +292,13 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
             // Replaced stdin read that was consuming legit user input in Windows
             // with non-blocking crossterm read event.
             if let Event::Key(key_event) = event::read()? {
-                match key_event.code {
-                    // End on backslash character
-                    KeyCode::Char('\\') => {
-                        debug!("End of response detected (backslash character).");
+                match (key_event.code, key_event.modifiers) {
+                    (KeyCode::Char('\\'), KeyModifiers::ALT)   // ST
+                    | (KeyCode::Char('g'), KeyModifiers::CONTROL)   // BEL
+                    // Insurance in case BEL is not recognosed as ^g
+                    | (KeyCode::Char('\u{0007}'), KeyModifiers::NONE)   //BEL
+                    => {
+                        debug!("End of response detected ({key_event:?}).");
                         // response.push('\\');
                         let rgb_string = response.split_off(response.find("rgb:").unwrap() + 4);
                         let (r, g, b) = decode_x11_color(&rgb_string)?;
@@ -308,7 +311,7 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
                         return Ok(Rgb { r, g, b });
                     }
                     // Append other characters to buffer
-                    KeyCode::Char(c) => {
+                    (KeyCode::Char(c), KeyModifiers::NONE) => {
                         // debug!("pushing {c}");
                         response.push(c);
                     }
