@@ -105,9 +105,8 @@ pub fn terminal() -> Terminal {
     // if env::var("WT_SESSION").is_ok() {
     if enable_virtual_terminal_processing() {
         debug!(
-            r#"This Windows terminal supports virtual terminal processing
-(but not OSC 10/11 colour queries if prior to Windows Terminal 1.22 Preview of August 2024)\r"#
-        );
+                "This Windows terminal supports virtual terminal processing (but not OSC 10/11 colour queries if prior to Windows Terminal 1.22 Preview of August 2024)\r"
+            );
         Terminal::XtermCompatible
     } else {
         debug!("Terminal::Windows\r");
