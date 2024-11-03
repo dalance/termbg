@@ -1,8 +1,10 @@
-use crossterm::event::{self, poll, read, Event, KeyCode, KeyModifiers};
+use crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, is_raw_mode_enabled};
 use log::debug;
+use mockall::automock;
 use scopeguard::defer;
 use std::env;
+use std::fmt::Debug;
 use std::io::IsTerminal;
 use std::io::{self, Read, Write};
 use std::time::{Duration, Instant};
@@ -54,6 +56,37 @@ pub enum Error {
     Parse(String),
     #[error("unsupported")]
     Unsupported,
+}
+
+/// A trait to allow mocking of the event reader for testing purposes.
+#[automock]
+pub trait EventReader {
+    /// Read a terminal event.
+    ///
+    /// # Errors
+    ///
+    /// This function will bubble up any i/o or `crossterm` errors encountered.
+    fn read_event(&self) -> Result<Event, Error>;
+    /// Poll for a terminal event.
+    ///
+    /// # Errors
+    ///
+    /// This function will bubble up any i/o or `crossterm` errors encountered.
+    fn poll(&self, timeout: Duration) -> Result<bool, Error>;
+}
+
+/// A struct to implement real-world use of the event reader, as opposed to use in testing.
+#[derive(Debug)]
+pub struct CrosstermEventReader;
+
+impl EventReader for CrosstermEventReader {
+    fn read_event(&self) -> Result<Event, Error> {
+        crossterm::event::read().map_err(Into::<Error>::into)
+    }
+
+    fn poll(&self, timeout: Duration) -> Result<bool, Error> {
+        crossterm::event::poll(timeout).map_err(Into::<Error>::into)
+    }
 }
 
 /// get detected terminal
@@ -251,8 +284,6 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         terminal::enable_raw_mode()?;
     }
 
-    let mut stderr = io::stderr();
-
     #[cfg(target_os = "windows")]
     {
         if !enable_virtual_terminal_processing() {
@@ -263,6 +294,22 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
         }
     }
 
+    let event_reader = CrosstermEventReader;
+    let mut stderr = io::stderr();
+
+    query_xterm(term, timeout, &event_reader, &mut stderr)
+}
+
+fn query_xterm<R, W>(
+    term: Terminal,
+    timeout: Duration,
+    event_reader: &R,
+    buffer: &mut W,
+) -> Result<Rgb, Error>
+where
+    R: EventReader + Debug,
+    W: Write + Debug,
+{
     // Query by XTerm control sequence
     let query = match term {
         Terminal::Tmux => "\x1bPtmux;\x1b\x1b]11;?\x07\x1b\\",
@@ -271,8 +318,8 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
     };
 
     // Send query
-    write!(stderr, "{query}")?;
-    stderr.flush()?;
+    write!(buffer, "{query}")?;
+    buffer.flush()?;
 
     let mut response = String::new();
     let start_time = Instant::now();
@@ -287,17 +334,18 @@ fn from_xterm(term: Terminal, timeout: Duration) -> Result<Rgb, Error> {
                 return parse_response(rgb_slice, start_time);
             }
             debug!("Failed to capture response\r");
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout 1").into());
         }
 
         // Replaced expensive async_std with blocking loop. Terminal normally responds
         // fast or not at all, and in the latter case we still have the timeout on the
         // main loop.
-        if poll(Duration::from_millis(100))? {
+        if event_reader.poll(Duration::from_millis(100))? {
             // Read the next event.
             // Replaced stdin read that was consuming legit user input in Windows
             // with non-blocking crossterm read event.
-            if let Event::Key(key_event) = event::read()? {
+            if let Event::Key(key_event) = event_reader.read_event()? {
+                // debug!("key_event={key_event:#?}\r");
                 match (key_event.code, key_event.modifiers) {
                     (KeyCode::Char('\\'), KeyModifiers::ALT | KeyModifiers::NONE)   // ST
                     | (KeyCode::Char('g'), KeyModifiers::CONTROL)   // BEL
@@ -511,7 +559,7 @@ fn xterm_latency(timeout: Duration) -> Result<Duration, Error> {
         // Check for timeout
         if start_time.elapsed() > timeout {
             terminal::disable_raw_mode()?; // Clean up raw mode
-            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout").into());
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "timeout 4").into());
         }
 
         // Non-blocking read attempt from stdin
@@ -611,6 +659,222 @@ fn from_winapi() -> Result<Rgb, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::{Event, KeyEvent};
+    use either::Either;
+    use mockall::mock;
+    use std::{
+        io::{self, Write},
+        iter::{self, Cloned},
+        slice::Iter,
+        sync::{Arc, Mutex},
+        thread::sleep,
+        time::Duration,
+    };
+
+    // Xterm expected query
+    const ESC_OSC_QUERY: &[u8; 8] = b"\x1b]11;?\x1b\\";
+
+    // Base constant response for successful RGB parsing.
+    const RGB_RESPONSE: &[Event] = &[
+        Event::Key(KeyEvent::new(KeyCode::Char(']'), KeyModifiers::ALT)),
+        Event::Key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('1'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char(';'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('b'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char(':'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('f'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('c'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
+        Event::Key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
+        // Event::Key(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::ALT)), // ST terminator
+    ];
+
+    const RGB_RESPONSE_LEN: usize = RGB_RESPONSE.len();
+
+    // Helper method for setting up and invoking call to query_xterm.
+    fn run_query_xterm_test(
+        emulate_response: bool,
+        num_to_send: usize, // Excluding any terminator
+        maybe_terminator: Option<&Event>,
+        expected_rgb: Option<(u16, u16, u16)>,
+    ) {
+        eprintln!("Testing for terminator {maybe_terminator:?}");
+        // Set up the mock writer and mock event reader
+        let mut mock_writer = MockWriter::new();
+        let mut mock_event_reader = MockEventReader::new();
+
+        // Expect the query write once with the appropriate OSC command
+        mock_writer
+            .expect_write()
+            .withf(move |buf| buf == ESC_OSC_QUERY)
+            .times(1)
+            .returning(|_| Ok(ESC_OSC_QUERY.len()));
+
+        // Expect flush to be called once, returning Ok
+        mock_writer.expect_flush().times(1).returning(|| Ok(()));
+
+        // Shared, thread-safe counter for events
+        let event_count = Arc::new(Mutex::new(0));
+        let total_events = if emulate_response {
+            num_to_send + if maybe_terminator.is_some() { 1 } else { 0 }
+        } else {
+            0
+        };
+
+        // Clone `event_count` so each closure can access the same counter
+        let poll_event_count = Arc::clone(&event_count);
+        let read_event_count = Arc::clone(&event_count);
+
+        // Mock the behavior of `poll()` using the counter
+        mock_event_reader.expect_poll().returning(move |_| {
+            let count = poll_event_count.lock().unwrap();
+            if *count < total_events {
+                Ok(true) // More events to process
+            } else {
+                Ok(false) // No more events left, stop responding to polling
+            }
+        });
+
+        let base_iterator = RGB_RESPONSE.iter().cloned();
+        let mut response_iter: Either<
+            Cloned<Iter<'_, Event>>,
+            std::iter::Chain<Cloned<Iter<'_, Event>>, iter::Once<Event>>,
+        > = if let Some(terminator) = maybe_terminator {
+            Either::Right(base_iterator.chain(iter::once(terminator.clone())))
+        } else {
+            Either::Left(base_iterator)
+        };
+
+        mock_event_reader.expect_read_event().returning(move || {
+            let event_count = Arc::clone(&read_event_count);
+            let mut count = event_count.lock().unwrap();
+            if *count < total_events {
+                *count += 1; // Increment the count as we read each event
+                             // debug!("\rIn expect_read_event, increasing count to {count}, total_events={total_events}, responding");
+                response_iter.next().ok_or_else(|| {
+                    // Block here without returning, simulating a "wait" condition
+                    sleep(Duration::from_secs(3));
+                    io::Error::new(io::ErrorKind::TimedOut, "timeout 2").into()
+                })
+            } else {
+                // debug!("\rIn expect_read_event, count={count}, total_events={total_events}, why are we here?");
+                // Block here without returning, simulating a "wait" condition
+                sleep(Duration::from_secs(3));
+                Err(io::Error::new(io::ErrorKind::TimedOut, "timeout 3").into())
+                // Optionally return an error after some time
+            }
+        });
+
+        // Run the `from_xterm` function and assert the results
+        let result = query_xterm(
+            Terminal::XtermCompatible,
+            Duration::from_secs(1),
+            &mock_event_reader,
+            &mut mock_writer,
+        );
+
+        debug!("result={result:?}\r");
+
+        match expected_rgb {
+            Some((r, g, b)) => {
+                let rgb = result.expect("Expected successful RGB parsing");
+                // let adj_actual_rgb = scale_u16_to_u8(rgb);
+                assert_eq!(
+                    rgb,
+                    Rgb { r, g, b },
+                    "RGB values do not match expected for terminator {maybe_terminator:?}",
+                );
+            }
+            None => {
+                assert!(result.is_err(), "Expected an error for this scenario");
+            }
+        }
+    }
+
+    // Mock the `Write` trait to use in testing
+    mock! {
+        #[derive(Debug)]
+        Writer {}
+
+        impl Write for Writer {
+            fn write(&mut self, buf: &[u8]) -> io::Result<usize>;
+            fn flush(&mut self) -> io::Result<()>;
+        }
+    }
+
+    // Expect response values expressed in 16-bit space
+    #[test]
+    fn test_query_xterm_with_various_terminators() {
+        const TERMINATORS: &[Event] = &[
+            Event::Key(KeyEvent::new(
+                KeyCode::Char('g'), // BEL equivalent
+                KeyModifiers::CONTROL,
+            )),
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(0x07_u8 as char),
+                KeyModifiers::NONE,
+            )), // Raw BEL
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(0x09c_u8 as char),
+                KeyModifiers::NONE,
+            )), // Raw ST
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(0x5c_u8 as char),
+                KeyModifiers::ALT,
+            )), // Esc-5c mapped to Alt-5c, equivalent to Alt-\
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(0x5c_u8 as char),
+                KeyModifiers::NONE,
+            )), // Esc-5c missing the Esc, equivalent to \
+            Event::Key(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::ALT)), // Esc-\ mapped to Alt-\
+            Event::Key(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::NONE)), // Esc-\ missing the Esc
+            Event::Key(KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE)), // Represents any unrecognised value, should be corrected on timeout
+        ];
+
+        let expected_rgb = Some((0xff * 256, 0xcc * 256, 0x99 * 256));
+        for terminator in TERMINATORS {
+            run_query_xterm_test(true, RGB_RESPONSE_LEN, Some(terminator), expected_rgb);
+        }
+    }
+
+    // Expect timeout
+    #[test]
+    fn test_query_xterm_timeout_no_response() {
+        // Test timeout scenario: No response received
+        run_query_xterm_test(false, RGB_RESPONSE_LEN, None, None);
+    }
+
+    // Expect timeout
+    #[test]
+    fn test_query_xterm_timeout_incomplete_response_1() {
+        // Test timeout scenario: Incomplete response, e.g., missing terminator
+        run_query_xterm_test(true, RGB_RESPONSE_LEN - 4, None, None);
+    }
+
+    // Expect timeout
+    #[test]
+    fn test_query_xterm_timeout_incomplete_response_2() {
+        // Test timeout scenario: Incomplete response, e.g., missing terminator
+        run_query_xterm_test(true, RGB_RESPONSE_LEN - 1, None, None);
+    }
+
+    // Expect query_xterm to pick it up and reconstitute the response on timeout check
+    #[test]
+    fn test_query_xterm_timeout_unterminated_response() {
+        // Test timeout scenario: Incomplete response, e.g., missing terminator
+        run_query_xterm_test(
+            true,
+            RGB_RESPONSE_LEN,
+            None,
+            Some((0xff * 256, 0xcc * 256, 0x99 * 256)),
+        );
+    }
 
     #[test]
     fn test_decode_x11_color() {

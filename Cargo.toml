@@ -25,9 +25,13 @@ pre-release-replacements = [
 [dependencies]
 crossterm = "0.28"
 log = "0.4"
+mockall = "0.13.0"
 scopeguard = "1.2"
 simplelog = "0.12.2"
 thiserror = "1"
+
+[dev-dependencies]
+either = "1.13.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winapi = { version = "0.3", features = [
