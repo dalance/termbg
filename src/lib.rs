@@ -692,7 +692,6 @@ mod tests {
         Event::Key(KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE)),
         Event::Key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
         Event::Key(KeyEvent::new(KeyCode::Char('9'), KeyModifiers::NONE)),
-        // Event::Key(KeyEvent::new(KeyCode::Char('\\'), KeyModifiers::ALT)), // ST terminator
     ];
 
     const RGB_RESPONSE_LEN: usize = RGB_RESPONSE.len();
@@ -759,7 +758,7 @@ mod tests {
                              // debug!("\rIn expect_read_event, increasing count to {count}, total_events={total_events}, responding");
                 response_iter.next().ok_or_else(|| {
                     // Block here without returning, simulating a "wait" condition
-                    sleep(Duration::from_secs(3));
+                    sleep(Duration::from_secs(2));
                     io::Error::new(io::ErrorKind::TimedOut, "timeout 2").into()
                 })
             } else {
@@ -771,7 +770,7 @@ mod tests {
             }
         });
 
-        // Run the `from_xterm` function and assert the results
+        // Run the `query_xterm` function and assert the results
         let result = query_xterm(
             Terminal::XtermCompatible,
             Duration::from_secs(1),
@@ -784,7 +783,6 @@ mod tests {
         match expected_rgb {
             Some((r, g, b)) => {
                 let rgb = result.expect("Expected successful RGB parsing");
-                // let adj_actual_rgb = scale_u16_to_u8(rgb);
                 assert_eq!(
                     rgb,
                     Rgb { r, g, b },
