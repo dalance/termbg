@@ -1,4 +1,26 @@
+use simplelog::{ColorChoice, CombinedLogger, Config, LevelFilter, TermLogger, TerminalMode};
+use std::env;
+
 fn main() {
+    let args: Vec<String> = env::args().collect();
+    let num_args = args.len();
+    match num_args {
+        1 => (),
+        2 if args[1] == "-d" || args[1] == "--debug" => {
+            CombinedLogger::init(vec![TermLogger::new(
+                LevelFilter::Debug,
+                Config::default(),
+                TerminalMode::Mixed,
+                ColorChoice::Auto,
+            )])
+            .unwrap();
+        }
+        _ => {
+            eprintln!("Usage: {} [--debug/-d]", args[0]);
+            std::process::exit(1);
+        }
+    }
+
     let timeout = std::time::Duration::from_millis(100);
 
     println!("Check terminal background color");
