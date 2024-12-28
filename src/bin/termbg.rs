@@ -4,20 +4,26 @@ use std::env;
 fn main() {
     let args: Vec<String> = env::args().collect();
     let num_args = args.len();
-    match num_args {
-        1 => (),
-        2 if args[1] == "-d" || args[1] == "--debug" => {
-            CombinedLogger::init(vec![TermLogger::new(
-                LevelFilter::Debug,
-                Config::default(),
-                TerminalMode::Mixed,
-                ColorChoice::Auto,
-            )])
-            .unwrap();
-        }
-        _ => {
-            eprintln!("Usage: {} [--debug/-d]", args[0]);
-            std::process::exit(1);
+
+    if num_args > 1 {
+        match args[1].as_str() {
+            "--version" | "-V" => {
+                println!("termbg {}", env!("CARGO_PKG_VERSION"));
+                return;
+            }
+            "--debug" | "-d" => {
+                CombinedLogger::init(vec![TermLogger::new(
+                    LevelFilter::Debug,
+                    Config::default(),
+                    TerminalMode::Mixed,
+                    ColorChoice::Auto,
+                )])
+                .unwrap();
+            }
+            _ => {
+                eprintln!("Usage: {} [--debug/-d] [--version/-V]", args[0]);
+                std::process::exit(1);
+            }
         }
     }
 
