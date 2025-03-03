@@ -87,7 +87,7 @@ fn main() {
 This crate provides a simple program to check.
 
 ```console
-$ cargo run
+$ cargo run --example termbg
 Check terminal background color
   Term : Tmux
   Color: R=0, G=0, B=0

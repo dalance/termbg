@@ -1,7 +1,6 @@
 use crossterm::event::{poll, read, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{self, is_raw_mode_enabled};
 use log::debug;
-use mockall::automock;
 use scopeguard::defer;
 use std::env;
 use std::fmt::Debug;
@@ -59,7 +58,7 @@ pub enum Error {
 }
 
 /// A trait to allow mocking of the event reader for testing purposes.
-#[automock]
+#[cfg_attr(test, mockall::automock)]
 pub trait EventReader {
     /// Read a terminal event.
     ///
