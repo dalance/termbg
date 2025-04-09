@@ -23,7 +23,7 @@ pre-release-replacements = [
 ]
 
 [dependencies]
-crossterm = "0.28"
+crossterm = "0.29"
 log = "0.4"
 scopeguard = "1.2"
 thiserror = "2"
